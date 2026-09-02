@@ -1,0 +1,20 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - 'eval'
+
+# pnpm 11 reads settings from here rather than the "pnpm" field in package.json,
+# and it replaced `onlyBuiltDependencies` with the `allowBuilds` map while making
+# `strictDepBuilds` default to true — an unapproved build script is now a hard
+# install failure, not a warning.
+#
+# esbuild must be allowed: tsx and vitest both invoke its native binary, and a
+# skipped postinstall leaves them unable to start at all.
+allowBuilds:
+  esbuild: true
+  '@tailwindcss/oxide': true
+  unrs-resolver: true
+  sharp: true
+
+# Exact versions. A six-day build should not drift under a caret range.
+saveExact: true

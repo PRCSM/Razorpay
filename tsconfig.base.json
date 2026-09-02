@@ -1,0 +1,50 @@
+{
+  "display": "Reflow base",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+
+    /* Strictness. Every one of these is deliberate — see docs/INSTRUCTIONS.md.
+       No `any`, no unchecked indexing, no silently-optional properties. */
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "useUnknownInCatchVariables": true,
+    "alwaysStrict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Unused code is a smell, not a build failure, during a 6-day build.
+       ESLint reports it; tsc does not block on it. */
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+
+    /* Nothing in this repo emits: packages export TypeScript source and Next
+       compiles them via `transpilePackages`. `declaration` is therefore off —
+       with it on, TypeScript also enforces declaration PORTABILITY, which fails
+       on library types it cannot name from a pnpm store path (TS2883). */
+    "declaration": false,
+    "sourceMap": true,
+    "noEmit": true,
+    "incremental": true
+  },
+  "exclude": ["node_modules", "dist", ".next", "build", "coverage"]
+}

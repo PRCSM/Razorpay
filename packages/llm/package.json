@@ -1,0 +1,23 @@
+{
+  "name": "@reflow/llm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Groq provider behind an interface. Prompts, Zod response schemas, response cache.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@reflow/core": "workspace:*",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.0",
+    "typescript": "7.0.2"
+  }
+}

@@ -1,0 +1,8 @@
+# Normalise line endings so the repo is identical on Windows, Linux CI, and the
+# Vercel build image. Without this, checked-in shell scripts and lockfiles can
+# differ by EOL between a Windows dev machine and Ubuntu runners.
+* text=auto eol=lf
+
+# Generated: keep out of diffs and language stats.
+pnpm-lock.yaml linguist-generated=true -diff
+packages/db/drizzle/** linguist-generated=true

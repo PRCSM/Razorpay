@@ -1,0 +1,41 @@
+{
+  "name": "reflow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Payment-recovery agent — diagnoses failed payments, picks the cheapest intervention, executes inside hard guardrails, and measures money recovered against a baseline.",
+  "license": "MIT",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @reflow/web dev",
+    "dev:worker": "pnpm --filter @reflow/worker dev",
+    "build": "pnpm --filter @reflow/web build",
+    "typecheck": "pnpm -r --workspace-concurrency=1 typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "pnpm --filter @reflow/db generate",
+    "db:migrate": "pnpm --filter @reflow/db migrate",
+    "db:seed": "pnpm --filter @reflow/db seed",
+    "db:studio": "pnpm --filter @reflow/db studio",
+    "eval": "pnpm --filter @reflow/eval start",
+    "eval:seed": "pnpm --filter @reflow/eval seed"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.4.0",
+    "dotenv": "17.4.2",
+    "eslint": "10.9.1",
+    "globals": "17.12.0",
+    "prettier": "3.9.6",
+    "prettier-plugin-tailwindcss": "0.8.1",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "typescript-eslint": "8.69.0",
+    "vitest": "4.1.11"
+  }
+}

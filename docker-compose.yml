@@ -1,0 +1,35 @@
+# Local Postgres, for developing without touching the Neon database.
+#
+# Neon is the real target (see docs/DATABASE_DESIGN.md) and DATABASE_URL in
+# .env.local points there. This exists so migrations, the seed, and destructive
+# experiments can be run against a throwaway database first.
+#
+#   docker compose up -d
+#   $env:DATABASE_URL = 'postgresql://reflow:reflow@localhost:5432/reflow?sslmode=disable'
+#   pnpm db:migrate ; pnpm db:seed
+#
+# The env validator requires the "-pooler" host segment only for neon.tech
+# hosts, so a local connection string is accepted as-is.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: reflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: reflow
+      # Local-only credential. Nothing sensitive reaches this database.
+      POSTGRES_PASSWORD: reflow
+      POSTGRES_DB: reflow
+    ports:
+      - '5432:5432'
+    volumes:
+      - reflow-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U reflow -d reflow']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  reflow-pgdata:

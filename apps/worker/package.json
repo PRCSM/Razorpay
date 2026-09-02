@@ -1,0 +1,25 @@
+{
+  "name": "@reflow/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Always-on recovery loop: ingest, diagnose, plan, schedule, execute, observe, learn.",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@reflow/core": "workspace:*",
+    "@reflow/db": "workspace:*",
+    "@reflow/llm": "workspace:*",
+    "dotenv": "17.4.2",
+    "drizzle-orm": "0.45.2"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.0",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2"
+  }
+}
