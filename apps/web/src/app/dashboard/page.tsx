@@ -1,6 +1,7 @@
-import { getWebEnv, loadPolicy } from '@reflow/core';
+import { getWebEnv } from '@reflow/core';
 import { DOMAIN_TABLE_NAMES } from '@reflow/db';
 import { auth, signOut } from '@/auth';
+import { getPolicy } from '@/lib/policy';
 
 /**
  * Bare protected dashboard.
@@ -20,7 +21,7 @@ export const metadata = { title: 'Dashboard — Reflow' };
 export default async function DashboardPage() {
   const session = await auth();
   const env = getWebEnv();
-  const policy = loadPolicy(env.POLICY_PATH, process.cwd());
+  const policy = getPolicy();
 
   const gateNames = Object.keys(policy.gates);
 
