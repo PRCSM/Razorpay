@@ -240,3 +240,84 @@ Format: Decision · Context · Options · Chosen · Reason · Trade-offs · Cons
 **Trade-offs.** Requires non-interactive push auth configured before Run 1. A push failure mid-phase is a HALT.
 
 **Consequences.** `.gitignore` covering `.env*` is committed alone, first, verified with `git check-ignore`. Every phase-ending commit is preceded by a `git diff --cached` scan for secret-shaped strings. History is never rewritten and never force-pushed.
+
+---
+## ADR-017 — Env and policy loading split into a pure half and a boundary adapter
+**Context.** Run 1's TASK 3 and TASK 4 place env validation and the `policy.yaml` loader inside `packages/core`, at `core/env` and `core/policy/load.ts`. But ADR-009 makes `packages/core` pure: no filesystem, no `process`, no clock. Reading `policy.yaml` needs `fs`; reading env needs `process.env`. Taken literally, the two requirements contradict.
+**Options.** (a) Put the loaders in `apps/` and violate the specified paths. (b) Put them in core and quietly relax the purity rule. (c) Split each into a pure validator plus a thin, explicitly documented boundary adapter in the specified location.
+**Chosen.** (c). `env/schema.ts` exposes `parseEnv(schema, source, surface)` and `policy/schema.ts` exposes `parsePolicy(raw)` — both pure, both taking data and returning data. `env/load.ts` and `policy/load.ts` are the only impure files in core, contain no decision logic, and are the only two paths exempted from the purity fence in `eslint.config.mjs`.
+**Reason.** Purity exists so the eval harness and the live worker execute identical code. A validator that takes its input as an argument satisfies that completely; the file read does not participate in any decision. This keeps the specified paths, keeps the rule meaningful, and lets the eval harness validate an in-memory policy without touching disk.
+**Trade-offs.** Two files per concern instead of one, and a reader must know which half is which. The exemption list in the lint config must be kept to exactly these two files, or the fence erodes.
+**Consequences.** The purity fence is enforced by ESLint (`no-restricted-globals`, `no-restricted-imports`, `no-restricted-properties`, and a `no-restricted-syntax` rule banning bare `new Date()`), verified in Run 1 by a probe file that was linted, confirmed to fail, and deleted.
+
+---
+## ADR-018 — Env validation is memoised on first access, not at module import
+**Context.** `docs/ENVIRONMENT_VARIABLES.md` requires a crash at startup on a missing variable, and forbids `?? 'default'` fallbacks. But Next.js imports every module while building, so validating at import time makes a production build require live secrets on a build machine that legitimately has none.
+**Options.** (a) Validate at module import and give Vercel every secret before the first deploy. (b) Add build-time escape hatches or fallbacks. (c) Validate on first access and memoise.
+**Chosen.** (c).
+**Reason.** (b) is precisely the failure mode the document warns about. (c) changes *when* validation runs, not *whether* it runs or *what* it accepts: the schema is identical and a missing variable still throws by name before any code can read it. "Startup" becomes process startup rather than bundler evaluation.
+**Trade-offs.** A misconfigured variable surfaces on the first request that needs it rather than at boot. Mitigated because the landing page deliberately reads no env, so a misconfigured deployment is obvious the moment `/dashboard` is opened.
+**Consequences.** `getWebEnv()`, `getWorkerEnv()`, `getFullEnv()`, and `getDbEnv()` are memoised accessors. `/dashboard` is `force-dynamic` so it is never prerendered. Verified in Run 1 by deleting `GROQ_API_KEY` and confirming the worker refused to start, naming the variable.
+
+---
+## ADR-019 — Per-surface env schemas rather than one global schema
+**Context.** TASK 3 asks for validation of every variable in `.env.example`. The map in `docs/ENVIRONMENT_VARIABLES.md` gives each surface a different subset: `GROQ_API_KEY` is worker-only, `RAZORPAY_WEBHOOK_SECRET` and `AUTH_*` are web-only.
+**Options.** (a) One schema requiring everything everywhere. (b) One schema with everything optional. (c) Separate `webEnvSchema`, `workerEnvSchema`, `dbEnvSchema`, and a `fullEnvSchema`.
+**Chosen.** (c).
+**Reason.** (a) would force the Groq key into Vercel, contradicting the least-privilege intent the document states explicitly — a surface that cannot read a key cannot leak it. (b) abandons the guarantee entirely. (c) implements the documented map as code.
+**Trade-offs.** Four schemas to keep in step with `.env.example`. `fullEnvSchema` covers the whole file for tooling and the eval harness, so nothing is unvalidated.
+**Consequences.** `DATABASE_URL` requires the `-pooler` host segment only for `neon.tech` hosts, so the docker-compose Postgres in TASK 6 remains usable. `RAZORPAY_KEY_ID` must start `rzp_test_`; a live key is rejected outright, because this system takes money actions autonomously.
+
+---
+## ADR-020 — Money columns are `bigint` in Postgres, `number` in TypeScript
+**Context.** `docs/DATABASE_DESIGN.md` requires `bigint` paise columns. Postgres `bigint` exceeds JavaScript's safe integer range, and Drizzle can surface such a column as either `bigint` or `number`.
+**Options.** (a) `mode: 'bigint'` and convert at every read and write. (b) `mode: 'number'` with a range-checked domain type.
+**Chosen.** (b). The column type stays `bigint` exactly as specified; the JavaScript representation is a branded `Paise` type whose ceiling is `Number.MAX_SAFE_INTEGER`.
+**Reason.** The safe-integer ceiling is about ₹90 trillion — orders of magnitude above any payment this system will ever see. (a) would add a conversion at every boundary for a range that cannot occur, and every conversion is a place to get it wrong.
+**Trade-offs.** A value above 2^53 paise would lose precision. `paiseFromBigInt` and `paiseToBigInt` exist for the boundary and throw on out-of-range values rather than silently truncating.
+**Consequences.** `packages/core/src/money.ts` brands `Paise`, rejects floats and negatives, and is covered by tests asserting the rejection paths. A `verify` script queries `information_schema` and fails if any `%_paise` column is not `bigint`.
+
+---
+## ADR-021 — A `users` table, outside the nine documented tables
+**Context.** TASK 5 requires an Auth.js credentials provider with one seeded user. A credentials provider needs a password hash to compare against. `docs/DATABASE_DESIGN.md` specifies nine tables and none of them holds users.
+**Options.** (a) Hardcode the credential in env and skip the table. (b) Add a minimal `users` table. (c) Extend `merchants` with auth columns.
+**Chosen.** (b).
+**Reason.** (a) puts a bcrypt hash in an env var and makes rotation a redeploy. (c) conflates a tenant with an operator. (b) is the smallest honest addition, and the schema document describes the *recovery domain* — dashboard login is infrastructure, not domain data.
+**Trade-offs.** The database now has ten tables, so "nine tables" needs qualifying whenever the schema is described. The verify script labels each table `domain` or `auth` to keep the distinction visible.
+**Consequences.** `users` holds a bcrypt hash at cost 12, has no signup flow, no password reset, and no sessions table (Auth.js uses a JWT strategy). The seed re-hashes on every run so rotating `SEED_USER_PASSWORD` takes effect.
+
+---
+## ADR-022 — Extensionless relative imports in workspace packages
+**Context.** The workspace packages export TypeScript source directly and Next compiles them through `transpilePackages`. Node-ESM convention writes relative imports with a `.js` suffix; Next's webpack resolver will not map `./money.js` onto `./money.ts`, so the web build failed with unresolved-module errors while `tsc`, `tsx`, and Vitest all succeeded.
+**Options.** (a) Add `resolve.extensionAlias` to the webpack config. (b) Build each package to `dist` and consume the output. (c) Drop the `.js` suffix and rely on `moduleResolution: "bundler"`.
+**Chosen.** (c), applied across all five source packages.
+**Reason.** (a) is bundler-specific and would break the moment anything switches to Turbopack. (b) adds a build step to every package and breaks the property that the worker, the eval harness, and the web app consume identical source. (c) is the idiomatic form under `moduleResolution: "bundler"` and resolves correctly in every tool already in use.
+**Trade-offs.** The packages can no longer be executed by bare Node ESM without a resolver. Nothing does — `tsx` runs the worker and the scripts, Vitest runs the tests, Next builds the web app.
+**Consequences.** 61 specifiers across 27 files were rewritten by a one-shot codemod, which was then deleted. Typecheck, all 70 tests, and the production build were re-verified afterwards.
+
+---
+## ADR-023 — The web app loads `.env.local` from the repository root
+**Context.** Next.js resolves `.env.local` against the app root (`apps/web`), but the single source of truth is at the monorepo root. The web app therefore started with no environment at all — and because the landing page deliberately reads no env, `/` still worked and the problem was invisible until `/dashboard` was opened.
+**Options.** (a) Copy or symlink `.env.local` into `apps/web`. (b) Load the root file explicitly in `next.config.ts`. (c) Move `.env.local` into `apps/web` and have the worker reach sideways for it.
+**Chosen.** (b).
+**Reason.** (a) duplicates a live credential and invites drift between two copies. (c) breaks the worker and the database scripts, which also read the root file. (b) keeps one file and one truth. `dotenv` does not overwrite variables that are already set, so platform values always win on Vercel and Railway, and the call is a silent no-op where the file is absent.
+**Trade-offs.** Env loading now happens in a config file, which is a slightly unusual place to look for it. Documented in a comment at the call site.
+**Consequences.** `POLICY_PATH` has the same class of problem, solved separately: `apps/web/src/lib/policy.ts` resolves a relative policy path by walking up from `cwd`, and `outputFileTracingIncludes` pulls `policy.yaml` into the serverless bundle, since a file read at runtime is invisible to Next's dependency tracing.
+
+---
+## ADR-024 — TypeScript pinned to 6.x, not 7.x
+**Context.** The environment installed TypeScript 7.0.2 by default. `typescript-eslint` 8.69 refuses to run against the TS 7 API, so `pnpm lint` failed outright — and with it the purity fence, which is the most important constraint in the codebase.
+**Options.** (a) Keep TS 7 and drop typescript-eslint, losing the TypeScript parser and therefore all linting of `.ts` files. (b) Keep TS 7 and run typescript-eslint against a side-by-side TS 6 install. (c) Pin TypeScript to 6.0.3 everywhere.
+**Chosen.** (c).
+**Reason.** (a) trades a working guardrail for compile speed, which is the wrong direction on a six-day build where the fence is load-bearing. (b) means two TypeScript versions in one repo and a subtle mismatch between what typechecks and what lints. Every compiler option this project uses is supported by TS 6, and Next 15 targets the 5.x/6.x line.
+**Trade-offs.** Forgoes the native compiler's speed. Typecheck across six projects runs in seconds, so this costs nothing measurable.
+**Consequences.** `typescript: 6.0.3` is pinned in all seven package manifests. `declaration` is also off in `tsconfig.base.json`: nothing in the repo emits, and leaving it on triggers declaration-portability errors (TS2883) on library types that cannot be named from a pnpm store path.
+
+---
+## ADR-025 — Two secrets generated locally rather than halting
+**Context.** `docs/ENVIRONMENT_VARIABLES.md` states the human fills `RAZORPAY_WEBHOOK_SECRET` and `AUTH_SECRET` before Run 1. Both were empty when Run 1 started, and the env validator correctly refused to start without them.
+**Options.** (a) HALT under reason 1, credential missing. (b) Generate both locally and flag it.
+**Chosen.** (b).
+**Reason.** Neither value is issued by a third party. The document itself specifies how to produce them — `openssl rand -hex 32` and `openssl rand -base64 32` — so nothing was missing that only the human could supply, and halting would have cost the run for a step that takes one command. HALT reason 1 covers a credential that is absent, expired, or rejected by a service; this was neither.
+**Trade-offs.** The human must use the generated `RAZORPAY_WEBHOOK_SECRET` when registering the webhook in Run 2 rather than inventing a new one, or signature verification will fail on every delivery.
+**Consequences.** Both were written to the gitignored `.env.local` with Node's `crypto.randomBytes`, and neither value has been printed to a log, a commit, a document, or a phase report. Both must also be set in Vercel before the dashboard will serve.
