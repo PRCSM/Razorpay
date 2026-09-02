@@ -1,0 +1,118 @@
+# ============================================================
+# Reflow guardrail policy
+#
+# Every money action the agent takes passes this chain, in order.
+# Loaded and Zod-validated at startup. Rendered read-only in the
+# dashboard at /dashboard/policy.
+#
+# This file is deliberately human-readable. A judge should be able
+# to understand what the agent can and cannot do in 20 seconds.
+# ============================================================
+
+version: "1.0.0"
+
+# Global halt. When true, no plan executes. Existing jobs stay
+# queued and drain when it is set back to false.
+kill_switch: false
+
+gates:
+
+  # ---- Gate 0 --------------------------------------------------
+  # Untrusted text (customer refs, invoice notes, VPA handles,
+  # merchant descriptions) is screened before it reaches ANY LLM.
+  # The system feeds this text to a model that influences money
+  # decisions, so injection is a real threat surface, not a
+  # theoretical one.
+  injection_screen:
+    enabled: true
+    model: meta-llama/llama-prompt-guard-2-86m
+    threshold: 0.8
+    on_detect: flag_and_skip_llm    # case → exceptions, no LLM call
+
+  # ---- Gate 1 --------------------------------------------------
+  # Hard ceiling on recovery attempts per case. Beyond this the
+  # case is closed as 'stopped' regardless of cause.
+  attempt_cap:
+    enabled: true
+    max_attempts: 3
+
+  # ---- Gate 2 --------------------------------------------------
+  # Minimum gap between two actions on the same case. Prevents
+  # a burst of retries against one customer.
+  cooling_window:
+    enabled: true
+    hours: 4
+    on_fail: reschedule_to_boundary
+
+  # ---- Gate 3 --------------------------------------------------
+  # Cap on messages per customer per day, counted ACROSS cases.
+  # A customer with three failed payments must not receive nine
+  # messages.
+  contact_cap:
+    enabled: true
+    max_per_customer_per_day: 3
+    on_fail: downgrade_to_non_contact
+
+  # ---- Gate 4 --------------------------------------------------
+  # No outreach overnight. Retries and payment-link generation
+  # are silent and remain allowed.
+  quiet_hours:
+    enabled: true
+    start: "21:00"
+    end: "09:00"
+    tz: "Asia/Kolkata"
+    applies_to: [nudge, pre_debit_notice, promise_to_pay]
+    on_fail: reschedule_to_window_open
+
+  # ---- Gate 5 --------------------------------------------------
+  # Terminal causes stop everything. Checked BEFORE any gate that
+  # could produce contact — ordering here is load-bearing.
+  terminal_check:
+    enabled: true
+    causes:
+      - fraud_flag
+      - chargeback
+      - customer_opt_out
+      - mandate_revoked
+    on_fail: stop_case
+
+  # ---- Gate 6 --------------------------------------------------
+  # Above this amount the agent proposes but does not act.
+  # 2500000 paise = ₹25,000
+  amount_ceiling:
+    enabled: true
+    max_autonomous_paise: 2500000
+    on_fail: escalate_human
+
+  # ---- Gate 7 --------------------------------------------------
+  # Regulatory constraints. Mandate re-presentment requires prior
+  # notice; SMS requires a registered DLT template id.
+  compliance:
+    enabled: true
+    mandate_requires_pre_debit_notice: true
+    pre_debit_notice_lead_hours: 24
+    sms_requires_dlt_template_id: true
+    on_fail: drop_and_log
+
+# ---- Cost model ------------------------------------------------
+# Used for est_cost_paise and cost-per-rupee-recovered.
+# Nothing is actually sent; these are the rates a real deployment
+# would pay. Stated openly so they can be challenged.
+costs:
+  sms_paise: 20
+  whatsapp_paise: 80
+  human_escalation_paise: 5000
+  retry_paise: 0
+  payment_link_paise: 0
+
+# ---- Attribution -----------------------------------------------
+# A payment inside this window after an action is credited to it.
+attribution:
+  window_hours: 72
+
+# ---- Timing ----------------------------------------------------
+# static | bandit. Overridden by TIMING_STRATEGY env var.
+timing:
+  strategy: static
+  bandit_arms_hours: [2, 6, 18, 48]
+  salary_window_days: [1, 2, 3]     # higher balances early month
