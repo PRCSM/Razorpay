@@ -1,0 +1,41 @@
+﻿# ---------------------------------------------------------------
+# Secrets — FIRST, and non-negotiable.
+# .env.local holds a live Neon password with full read/write/drop
+# and this repository is PUBLIC. Nothing matching .env* is tracked,
+# with one deliberate exception: the value-free .env.example template.
+# ---------------------------------------------------------------
+.env*
+!.env.example
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Caches
+.turbo/
+.cache/
+.eslintcache
+
+# Tests
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Platform
+.vercel/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
