@@ -9,9 +9,9 @@
 
 import bcrypt from 'bcryptjs';
 import { eq } from 'drizzle-orm';
-import { createPooledDb } from '../client.js';
-import { merchants, users } from '../schema/index.js';
-import { bootstrapDbEnv, describeConnection } from './env.js';
+import { createPooledDb } from '../client';
+import { merchants, users } from '../schema/index';
+import { bootstrapDbEnv, describeConnection } from './env';
 
 /** docs/DATABASE_DESIGN.md: "One seeded merchant for the demo." */
 export const DEMO_MERCHANT_NAME = 'Demo Merchant';

@@ -8,7 +8,7 @@
  * Run 1 scaffolds these. Runs 3–5 fill in the functions that consume them.
  */
 
-import type { Paise } from '../money.js';
+import type { Paise } from '../money';
 import type {
   ActionStatus,
   ActionType,
@@ -21,7 +21,7 @@ import type {
   OutcomeResult,
   PaymentMethod,
   PlanStatus,
-} from './enums.js';
+} from './enums';
 
 /** Opaque identifiers. Branding stops a case id being passed where a plan id belongs. */
 export type CaseId = string & { readonly __brand: 'CaseId' };

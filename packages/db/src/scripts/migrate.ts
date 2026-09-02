@@ -9,8 +9,8 @@
 
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { resolve } from 'node:path';
-import { createPooledDb } from '../client.js';
-import { bootstrapDbEnv, describeConnection } from './env.js';
+import { createPooledDb } from '../client';
+import { bootstrapDbEnv, describeConnection } from './env';
 
 async function main(): Promise<void> {
   const { databaseUrl } = bootstrapDbEnv();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resolve } from 'node:path';
-import { loadPolicy, parsePolicyYaml, PolicyLoadError } from './load.js';
-import { PolicyValidationError } from './schema.js';
+import { loadPolicy, parsePolicyYaml, PolicyLoadError } from './load';
+import { PolicyValidationError } from './schema';
 
 /**
  * Completion criterion 7: the real policy.yaml loads and Zod-validates.

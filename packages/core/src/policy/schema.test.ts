@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parsePolicy, PolicyValidationError } from './schema.js';
+import { parsePolicy, PolicyValidationError } from './schema';
 
 /**
  * A malformed policy must fail loudly. The failure mode this guards against is

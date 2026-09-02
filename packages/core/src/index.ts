@@ -13,8 +13,8 @@
  * Runs 3–5 add diagnosis rules, the policy engine, and the guardrail chain.
  */
 
-export * from './money.js';
-export * from './types/enums.js';
-export * from './types/domain.js';
-export * from './env/index.js';
-export * from './policy/index.js';
+export * from './money';
+export * from './types/enums';
+export * from './types/domain';
+export * from './env/index';
+export * from './policy/index';

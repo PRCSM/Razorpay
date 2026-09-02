@@ -1,5 +1,5 @@
 import { index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { merchants } from './merchants.js';
+import { merchants } from './merchants';
 
 /**
  * `users` — dashboard login only.

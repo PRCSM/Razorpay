@@ -1,7 +1,7 @@
 import type { OutcomeResult } from '@reflow/core';
 import { bigint, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { actions } from './actions.js';
-import { recoveryCases } from './recovery-cases.js';
+import { actions } from './actions';
+import { recoveryCases } from './recovery-cases';
 
 /**
  * `outcomes`

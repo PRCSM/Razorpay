@@ -6,7 +6,7 @@ import {
   webEnvSchema,
   workerEnvSchema,
   type EnvSource,
-} from './schema.js';
+} from './schema';
 
 /**
  * These tests are the standing proof of completion criterion 8: env validation

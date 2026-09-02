@@ -12,9 +12,9 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { createPooledDb } from '../client.js';
-import { DOMAIN_TABLE_NAMES, TABLE_NAMES } from '../table-names.js';
-import { bootstrapDbEnv, describeConnection } from './env.js';
+import { createPooledDb } from '../client';
+import { DOMAIN_TABLE_NAMES, TABLE_NAMES } from '../table-names';
+import { bootstrapDbEnv, describeConnection } from './env';
 
 /**
  * `db.execute<T>` constrains T to `Record<string, unknown>`, so these row shapes

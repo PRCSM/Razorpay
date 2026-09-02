@@ -16,4 +16,4 @@ export type {
   InjectionVerdict,
   LlmProvider,
   ModelSlot,
-} from './provider.js';
+} from './provider';

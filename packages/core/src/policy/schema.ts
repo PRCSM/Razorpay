@@ -9,7 +9,7 @@
  */
 
 import { z } from 'zod';
-import { ACTION_TYPES, CONTACT_ACTION_TYPES, TIMING_STRATEGIES } from '../types/enums.js';
+import { ACTION_TYPES, CONTACT_ACTION_TYPES, TIMING_STRATEGIES } from '../types/enums';
 
 /** Semantic version of the policy document, recorded on every plan. */
 const versionSchema = z

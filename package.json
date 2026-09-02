@@ -2,7 +2,7 @@
   "name": "reflow",
   "version": "0.1.0",
   "private": true,
-  "description": "Payment-recovery agent — diagnoses failed payments, picks the cheapest intervention, executes inside hard guardrails, and measures money recovered against a baseline.",
+  "description": "Payment-recovery agent â€” diagnoses failed payments, picks the cheapest intervention, executes inside hard guardrails, and measures money recovered against a baseline.",
   "license": "MIT",
   "packageManager": "pnpm@11.25.0",
   "engines": {
@@ -34,7 +34,7 @@
     "prettier": "3.9.6",
     "prettier-plugin-tailwindcss": "0.8.1",
     "tsx": "4.23.13",
-    "typescript": "7.0.2",
+    "typescript": "6.0.3",
     "typescript-eslint": "8.69.0",
     "vitest": "4.1.11"
   }

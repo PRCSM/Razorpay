@@ -12,7 +12,7 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { merchants } from './merchants.js';
+import { merchants } from './merchants';
 
 /**
  * `recovery_cases`

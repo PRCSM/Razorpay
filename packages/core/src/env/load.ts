@@ -30,7 +30,7 @@ import {
   type FullEnv,
   type WebEnv,
   type WorkerEnv,
-} from './schema.js';
+} from './schema';
 
 /** Read the ambient environment. The single point of impurity. */
 function ambient(): EnvSource {

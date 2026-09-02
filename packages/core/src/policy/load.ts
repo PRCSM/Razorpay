@@ -13,7 +13,7 @@
 import { readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { parsePolicy, PolicyValidationError, type PolicyConfig } from './schema.js';
+import { parsePolicy, PolicyValidationError, type PolicyConfig } from './schema';
 
 /** Thrown when the policy file cannot be read or is not valid YAML. */
 export class PolicyLoadError extends Error {

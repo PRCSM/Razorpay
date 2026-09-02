@@ -26,6 +26,6 @@ export {
   type PolicyTiming,
   type QuietHoursGate,
   type TerminalCheckGate,
-} from './schema.js';
+} from './schema';
 
-export { loadPolicy, parsePolicyYaml, PolicyLoadError } from './load.js';
+export { loadPolicy, parsePolicyYaml, PolicyLoadError } from './load';

@@ -9,8 +9,8 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { plans } from './plans.js';
-import { recoveryCases } from './recovery-cases.js';
+import { plans } from './plans';
+import { recoveryCases } from './recovery-cases';
 
 /**
  * `actions`

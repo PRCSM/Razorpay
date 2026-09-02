@@ -10,15 +10,15 @@
  * pg-boss itself from Run 5 onward and is deliberately not modelled here.
  */
 
-export * from './merchants.js';
-export * from './raw-events.js';
-export * from './recovery-cases.js';
-export * from './plans.js';
-export * from './actions.js';
-export * from './outcomes.js';
-export * from './audit-log.js';
-export * from './exceptions.js';
-export * from './bandit-arms.js';
-export * from './users.js';
+export * from './merchants';
+export * from './raw-events';
+export * from './recovery-cases';
+export * from './plans';
+export * from './actions';
+export * from './outcomes';
+export * from './audit-log';
+export * from './exceptions';
+export * from './bandit-arms';
+export * from './users';
 
-export * from './relations.js';
+export * from './relations';

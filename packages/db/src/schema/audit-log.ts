@@ -1,6 +1,6 @@
 import type { AuditActor } from '@reflow/core';
 import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { recoveryCases } from './recovery-cases.js';
+import { recoveryCases } from './recovery-cases';
 
 /**
  * `audit_log`

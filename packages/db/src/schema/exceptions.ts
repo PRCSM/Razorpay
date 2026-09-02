@@ -1,5 +1,5 @@
 import { boolean, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { recoveryCases } from './recovery-cases.js';
+import { recoveryCases } from './recovery-cases';
 
 /**
  * `exceptions`

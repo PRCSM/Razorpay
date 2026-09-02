@@ -17,7 +17,7 @@ import type { NeonHttpDatabase } from 'drizzle-orm/neon-http';
 import { drizzle as drizzleNode } from 'drizzle-orm/node-postgres';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import * as schema from './schema/index.js';
+import * as schema from './schema/index';
 
 export type Schema = typeof schema;
 

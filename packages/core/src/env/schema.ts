@@ -15,7 +15,7 @@
  */
 
 import { z } from 'zod';
-import { TIMING_STRATEGIES } from '../types/enums.js';
+import { TIMING_STRATEGIES } from '../types/enums';
 
 /** A raw environment source. `process.env` is assignable to this. */
 export type EnvSource = Readonly<Record<string, string | undefined>>;

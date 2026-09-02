@@ -1,12 +1,12 @@
 import { relations } from 'drizzle-orm';
-import { actions } from './actions.js';
-import { auditLog } from './audit-log.js';
-import { exceptions } from './exceptions.js';
-import { merchants } from './merchants.js';
-import { outcomes } from './outcomes.js';
-import { plans } from './plans.js';
-import { recoveryCases } from './recovery-cases.js';
-import { users } from './users.js';
+import { actions } from './actions';
+import { auditLog } from './audit-log';
+import { exceptions } from './exceptions';
+import { merchants } from './merchants';
+import { outcomes } from './outcomes';
+import { plans } from './plans';
+import { recoveryCases } from './recovery-cases';
+import { users } from './users';
 
 /**
  * Relations, mirroring the entity graph in docs/DATABASE_DESIGN.md:

@@ -11,7 +11,7 @@ import {
   scalePaise,
   subPaise,
   sumPaise,
-} from './money.js';
+} from './money';
 
 /**
  * Money is the one place a silent bug turns into a wrong number in RESULTS.md,

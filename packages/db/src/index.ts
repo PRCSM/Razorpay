@@ -3,7 +3,7 @@
  * The only place SQL lives (docs/ARCHITECTURE.md, package boundaries).
  */
 
-export * from './schema/index.js';
+export * from './schema/index';
 export {
   closeAllPools,
   createPooledDb,
@@ -13,5 +13,5 @@ export {
   type PooledDbOptions,
   type Schema,
   type ServerlessDb,
-} from './client.js';
-export { TABLE_NAMES, DOMAIN_TABLE_NAMES } from './table-names.js';
+} from './client';
+export { TABLE_NAMES, DOMAIN_TABLE_NAMES } from './table-names';

@@ -10,6 +10,6 @@ export {
   type FullEnv,
   type WebEnv,
   type WorkerEnv,
-} from './schema.js';
+} from './schema';
 
-export { getDbEnv, getFullEnv, getWebEnv, getWorkerEnv } from './load.js';
+export { getDbEnv, getFullEnv, getWebEnv, getWorkerEnv } from './load';
