@@ -9,6 +9,7 @@
     "start": "tsx src/index.ts",
     "seed": "tsx src/seed.ts",
     "fingerprint": "tsx src/fingerprint.ts",
+    "score": "tsx src/score-diagnosis.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

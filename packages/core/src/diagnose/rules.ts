@@ -53,7 +53,12 @@ export interface DiagnosisRule {
   /** Stable id, so a match is traceable and testable. */
   readonly id: string;
   readonly cause: RootCause;
-  readonly source: CaseSource;
+  /**
+   * Which surface this rule applies to. OMITTED means every surface — used by the
+   * terminal rules, because POLICY_SPEC §1 lists terminal causes under
+   * "Terminal — all sources".
+   */
+  readonly source?: CaseSource;
   readonly errorCode?: readonly string[];
   readonly errorSource?: readonly string[];
   readonly errorStep?: readonly string[];
@@ -125,37 +130,42 @@ function includesToken(allowed: readonly string[] | undefined, actual: string | 
 const MANDATE_RAILS: readonly PaymentMethod[] = ['emandate'];
 
 export const DIAGNOSIS_RULES: readonly DiagnosisRule[] = [
-  // ---- Terminal, checked first ------------------------------------------
-  // Terminal causes must win over anything that could produce an action.
+  // ---- Terminal, checked first, on EVERY surface --------------------------
+  // POLICY_SPEC §1 lists these under "Terminal — all sources", so none of them
+  // carries a `source` constraint. They are checked before anything that could
+  // produce an action, which is the same ordering gate 5 enforces at plan time.
+  //
   // `internal` as the source of an authorization failure is Razorpay's own risk
-  // engine intervening, which is a fraud hold rather than a bank decision.
+  // engine intervening — a fraud hold, not a bank decision.
   {
     id: 'terminal.fraud_flag',
     cause: 'fraud_flag',
-    source: 'payment',
     errorSource: ['internal'],
     errorStep: ['payment_authorization'],
     rationale:
-      'An authorization blocked by internal risk, not by the bank — Razorpay held it. Terminal.',
+      'An authorization blocked by internal risk, not by the bank — Razorpay held it. Terminal, ' +
+      'and possible on any surface.',
   },
   {
     id: 'terminal.chargeback',
     cause: 'chargeback',
-    source: 'payment',
     errorStep: ['settlement'],
     errorSource: ['bank'],
-    rationale: 'A bank failure at settlement is money being pulled back, not a failed attempt.',
+    rationale:
+      'A bank failure at settlement is money being pulled back, not a failed attempt. Any surface ' +
+      'that settles can be charged back.',
   },
   {
     id: 'terminal.customer_opt_out',
     cause: 'customer_opt_out',
-    source: 'payment',
     errorSource: ['customer'],
     errorStep: ['payment_authorization'],
     methodNot: MANDATE_RAILS,
     rationale:
-      'The customer refused at authorization on a one-off rail — an explicit no, not a drop-off. ' +
-      'On a mandate rail the same tuple means the mandate was revoked.',
+      'The customer refused at authorization on a NON-mandate rail — an explicit no, not a ' +
+      'drop-off. On a mandate rail the identical tuple means the mandate was revoked, and the ' +
+      'two are genuinely indistinguishable from the error fields. Both are terminal, so the ' +
+      'agent stops either way and the money outcome is the same.',
   },
 
   // ---- Payments, full depth (8) ------------------------------------------
@@ -343,7 +353,8 @@ export interface RuleMatch {
 }
 
 function ruleMatches(rule: DiagnosisRule, input: DiagnosisInput): boolean {
-  if (rule.source !== input.source) return false;
+  // An omitted source means the rule is surface-agnostic.
+  if (rule.source !== undefined && rule.source !== input.source) return false;
 
   const code = token(input.errorCode);
   const source = normalizeSource(input.errorSource);

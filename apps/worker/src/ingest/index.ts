@@ -14,15 +14,18 @@
  * for outcome attribution in Run 5.
  */
 
-import { isRecoverySignalEvent, normalizeEvent } from '@reflow/core';
+import { isDowntimeEvent, isRecoverySignalEvent, normalizeEvent } from '@reflow/core';
 import type { PooledDb } from '@reflow/db';
 import { merchants, rawEvents, recoveryCases } from '@reflow/db';
 import { asc, eq, isNull, sql } from 'drizzle-orm';
+import { upsertDowntimeFromEvent } from './downtime';
 
 export interface IngestSummary {
   readonly scanned: number;
   readonly casesCreated: number;
   readonly signalsRecorded: number;
+  /** `payment.downtime.*` events turned into downtime windows. */
+  readonly downtimeWindows: number;
   readonly skipped: number;
   readonly failed: number;
   readonly warnings: readonly string[];
@@ -89,6 +92,7 @@ export async function runIngestPass(
       scanned: 0,
       casesCreated: 0,
       signalsRecorded: 0,
+      downtimeWindows: 0,
       skipped: 0,
       failed: 0,
       warnings: [],
@@ -99,12 +103,40 @@ export async function runIngestPass(
 
   let casesCreated = 0;
   let signalsRecorded = 0;
+  let downtimeCount = 0;
   let skipped = 0;
   let failed = 0;
   const warnings: string[] = [];
 
   for (const event of pending) {
     try {
+      // Downtime events describe the platform, not a case. They become windows
+      // that diagnosis consults, and open no recovery case of their own.
+      if (isDowntimeEvent(event.eventType)) {
+        const result = await upsertDowntimeFromEvent(db, {
+          eventType: event.eventType,
+          payload: event.payload,
+          receivedAt: event.receivedAt ?? now(),
+        });
+
+        for (const warning of result.warnings) {
+          warnings.push(`${event.eventType} ${event.providerEventId}: ${warning}`);
+        }
+        if (!result.ok) {
+          warnings.push(
+            `${event.eventType} ${event.providerEventId}: ${result.reason ?? 'unusable downtime payload'}`,
+          );
+        } else {
+          downtimeCount += 1;
+        }
+
+        await db
+          .update(rawEvents)
+          .set({ processedAt: now() })
+          .where(eq(rawEvents.id, event.id));
+        continue;
+      }
+
       // Recovery signals open no case. Stamp and move on — the raw row stays.
       if (isRecoverySignalEvent(event.eventType)) {
         await db
@@ -179,6 +211,7 @@ export async function runIngestPass(
     scanned: pending.length,
     casesCreated,
     signalsRecorded,
+    downtimeWindows: downtimeCount,
     skipped,
     failed,
     warnings,

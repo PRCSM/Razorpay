@@ -16,6 +16,7 @@
     "@reflow/core": "workspace:*",
     "zod": "4.5.4"
   },
+  "peerDependencies": {},
   "devDependencies": {
     "@types/node": "26.4.0",
     "typescript": "6.0.3"

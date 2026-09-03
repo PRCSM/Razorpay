@@ -10,6 +10,8 @@
     "start": "tsx src/index.ts",
     "ingest:once": "tsx src/index.ts --once",
     "webhook:smoke": "tsx src/scripts/webhook-smoke.ts",
+    "diagnose": "tsx src/scripts/diagnose.ts",
+    "downtime:smoke": "tsx src/scripts/downtime-smoke.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
