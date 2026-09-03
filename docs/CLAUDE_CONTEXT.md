@@ -9,23 +9,48 @@ honest and keep it current.
 
 ---
 
+## Deployment facts — corrected in Run 2
+
+The Run 1 report blamed a repository defect for the failing deploy. That was
+wrong, and the correction matters:
+
+| | Value |
+|---|---|
+| Vercel project | **`reflow`** |
+| Production URL | **https://reflow-puce.vercel.app** |
+| Deploy status | **GREEN** |
+| Webhook target | **https://reflow-puce.vercel.app/api/webhooks/razorpay** |
+| Vercel env | all set except `GROQ_API_KEY` (worker-only by design) |
+
+An earlier Vercel project named `razorpay` was misconfigured. It is deleted, and
+it is the sole reason Run 1's deployments failed — the repo built fine all along.
+
+**One loose end:** the dead `razorpay` project's GitHub integration still posts a
+commit status, so `gh api .../status` reports an aggregate `failure` even though
+`reflow` reports `success`. Two checks appear per commit. Harmless, but it makes
+the commit look red. See **Human action needed**.
+
+Anything referring to `razorpay-theta-ten.vercel.app` or a `razorpay` Vercel
+project is stale.
+
+---
+
 ## Current phase
 
-`RUN 1 — Foundation · ⚠️ done with one known gap (Vercel deploy fails)`
+`RUN 2 — Ingest · ✅ done`
 
-Next: **RUN 2 — Ingest** (`CLAUDE_CODE_PROMPTS.md`)
+Next: **RUN 3 — Diagnosis** (`CLAUDE_CODE_PROMPTS.md`)
 
 ---
 
 ## Completed
 
-**Run 1 — Foundation.** Git initialised and secured, pnpm monorepo scaffolded,
-the nine-table schema migrated to Neon, env and policy validation implemented and
-tested, auth working with a seeded user, local Postgres and CI configured.
+**Run 1 — Foundation.** Git secured, pnpm monorepo, nine-table schema on Neon,
+env and policy validation, auth with a seeded user, CI, local Postgres.
 
-Eight of nine completion criteria verified by running them. The ninth — a green
-Vercel deployment — fails, and the cause is outside what this session can reach.
-Details under **Known issues**.
+**Run 2 — Ingest.** Signed webhook receiver, pure four-source normalizer,
+transactional ingest worker, and a seeded synthetic generator producing 500
+labelled cases in Neon. All eight completion criteria verified by running them.
 
 ---
 
@@ -33,8 +58,8 @@ Details under **Known issues**.
 
 | # | Run | Status |
 |---|---|---|
-| 1 | Foundation — gitignore, monorepo, schema, auth | ⚠️ Done, Vercel deploy failing |
-| 2 | Ingest — webhooks, normalization, synthetic generator | ⬜ Not started |
+| 1 | Foundation — gitignore, monorepo, schema, auth | ✅ Done |
+| 2 | Ingest — webhooks, normalization, synthetic generator | ✅ Done |
 | 3 | Diagnosis — rule engine, LLM tail, injection gate | ⬜ Not started |
 | 4 | Policy + guardrails | ⬜ Not started |
 | 5 | Scheduler + execution + outcomes | ⬜ Not started |
@@ -48,268 +73,240 @@ Details under **Known issues**.
 
 ## Files changed this run
 
-**Git and tooling**
-`.gitignore` (rewritten) · `.gitattributes` · `.npmrc` · `pnpm-workspace.yaml` ·
-`package.json` · `tsconfig.base.json` · `eslint.config.mjs` · `.prettierrc.json` ·
-`.prettierignore` · `vitest.config.mts` · `docker-compose.yml` ·
-`.github/workflows/ci.yml`
+**New — `packages/core` (pure)**
+`src/webhook/signature.ts` · `src/webhook/envelope.ts` · `src/webhook/events.ts` ·
+`src/webhook/index.ts` · `src/webhook/signature.test.ts` ·
+`src/webhook/envelope.test.ts` · `src/normalize/index.ts` · `src/normalize/read.ts` ·
+`src/normalize/normalize.test.ts`
 
-**packages/core** — pure domain
-`src/index.ts` · `src/money.ts` · `src/money.test.ts` · `src/types/enums.ts` ·
-`src/types/domain.ts` · `src/env/{schema,load,index}.ts` · `src/env/schema.test.ts` ·
-`src/policy/{schema,load,index}.ts` · `src/policy/{schema,load}.test.ts` ·
-`package.json` · `tsconfig.json`
+**New — `apps/web`**
+`src/app/api/webhooks/razorpay/route.ts`
 
-**packages/db** — the only place SQL lives
-`src/schema/{merchants,raw-events,recovery-cases,plans,actions,outcomes,audit-log,exceptions,bandit-arms,users,relations,index}.ts` ·
-`src/client.ts` · `src/table-names.ts` · `src/index.ts` ·
-`src/scripts/{env,migrate,seed,verify}.ts` · `drizzle.config.ts` ·
-`drizzle/0000_nifty_arclight.sql` · `package.json` · `tsconfig.json`
+**New — `apps/worker`**
+`src/ingest/index.ts` · `src/scripts/webhook-smoke.ts`
 
-**packages/llm** — interface only
-`src/provider.ts` · `src/index.ts` · `package.json` · `tsconfig.json`
+**New — `eval`**
+`src/generator/index.ts` · `src/generator/prng.ts` ·
+`src/generator/distribution.ts` · `src/generator/time.ts` ·
+`src/generator/generator.test.ts` · `src/fingerprint.ts`
 
-**apps/web**
-`src/app/{layout,page}.tsx` · `src/app/globals.css` ·
-`src/app/login/{page,login-form,actions}.ts(x)` · `src/app/dashboard/page.tsx` ·
-`src/app/api/auth/[...nextauth]/route.ts` · `src/auth.ts` · `src/auth.config.ts` ·
-`src/middleware.ts` · `src/lib/{utils,policy}.ts` · `src/types/assets.d.ts` ·
-`next.config.ts` · `postcss.config.mjs` · `components.json` · `next-env.d.ts` ·
-`package.json` · `tsconfig.json`
-
-**apps/worker** — scaffold
-`src/index.ts` · `package.json` · `tsconfig.json`
-
-**eval** — scaffold
-`src/index.ts` · `src/seed.ts` · `package.json` · `tsconfig.json`
-
-**docs**
-`DECISIONS.md` (ADR-017 … ADR-025 appended) · `CLAUDE_CONTEXT.md` (this file)
+**Modified**
+`packages/core/src/index.ts` (barrel) · `apps/worker/src/index.ts` (ingest loop,
+`--once`) · `eval/src/seed.ts` (rewritten) · `package.json` and
+`apps/worker/package.json` and `eval/package.json` (scripts) ·
+`docs/ENVIRONMENT_VARIABLES.md` (corrected URL) · `docs/CLAUDE_CONTEXT.md`
 
 ---
 
 ## Architecture changes
 
-None to the shape in `docs/ARCHITECTURE.md`. Two implementation choices worth
-knowing before touching the code:
+None to the shape in `docs/ARCHITECTURE.md`. The data flow now exists for steps
+1–2 (ingest, normalize).
 
-- **The purity rule is now enforced by the linter, not by discipline.**
-  `eslint.config.mjs` blocks `fetch`, `process`, `fs`, `path`, `@reflow/db`,
-  `drizzle-orm`, `Date.now()`, `Math.random()`, and bare `new Date()` inside
-  `packages/core/src`. Exactly two files are exempt: `env/load.ts` and
-  `policy/load.ts`. Verified by linting a deliberate violation and watching it
-  fail. If you need the clock in core, take `now: Date` as a parameter.
+Two things a future session needs to know:
 
-- **Env and policy loading are split pure/impure** (ADR-017). Use `parseEnv` and
-  `parsePolicy` from decision code and tests; use `getWebEnv`/`getWorkerEnv` and
-  `loadPolicy` only at process edges.
+- **`raw_events.payload` stores the COMPLETE envelope**, not the inner
+  `payload` object. `normalizeEvent` accepts either — it unwraps a nested
+  `payload` key if present. This bit once already; see **Known issues**.
+- **Signature verification and normalization live in `packages/core`**, not in the
+  route. `node:crypto` is a deterministic computation, not I/O, so it does not
+  breach the purity fence. The route handler is a thin shell: verify, insert, 200.
 
 ---
 
 ## Schema changes
 
-The nine tables in `docs/DATABASE_DESIGN.md` are implemented verbatim and applied
-to Neon, plus one addition:
+**None.** Run 2 writes to the existing `raw_events` and `recovery_cases` tables
+and added no columns. The migration is still `0000_nifty_arclight.sql`.
 
-- **`users` added** (ADR-021) — dashboard login only. Not domain data. The
-  database therefore has **ten** tables; `pnpm --filter @reflow/db verify` labels
-  each one `domain` or `auth`.
-
-Confirmed live in Neon: 10 tables, 33 indexes, all four `%_paise` columns are
-`bigint`, `raw_events.provider_event_id` UNIQUE present,
-`bandit_arms (bucket_key, arm)` UNIQUE present.
-
-Migration file: `packages/db/drizzle/0000_nifty_arclight.sql`. Never edit it —
-add a new migration.
+Current Neon state: 500 synthetic cases, all with `ground_truth`, 0 pending
+`raw_events`.
 
 ---
 
 ## API changes
 
-No business endpoints yet. Routes that exist:
-
 | Route | Auth | Notes |
 |---|---|---|
-| `GET /` | public | Static. Reads **no** env — serves on an unconfigured deployment. |
-| `GET /login` | public | `force-dynamic`. Credentials form. |
-| `GET /dashboard` | **protected** | `force-dynamic`. Validates env, loads policy. |
-| `/api/auth/*` | public | Auth.js handlers, Node runtime (bcrypt). |
+| `POST /api/webhooks/razorpay` | HMAC | **NEW.** Verify → insert → 200. Never processes inline. |
+| `GET /api/webhooks/razorpay` | — | **NEW.** 405, for humans checking the URL. |
+| `GET /` | public | unchanged, static |
+| `GET /login` | public | unchanged |
+| `GET /dashboard` | protected | unchanged |
+| `/api/auth/*` | public | unchanged |
 
-`middleware.ts` matches `/dashboard/:path*` only, deliberately — `/` must stay
-reachable with no environment configured.
+**Webhook contract**
 
-`/api/webhooks/razorpay` does **not** exist yet. It is Run 2.
+- Header `x-razorpay-signature`: HMAC-SHA256 hex over the **raw body bytes**.
+  Missing, malformed, or mismatched → **400**, nothing stored.
+- Header `x-razorpay-event-id`: the idempotency key. Absent → a deterministic
+  `derived_<sha256 prefix>` of the body is used instead.
+- Duplicate delivery → **200** `{"received":true,"duplicate":true}`, no new row.
+- Storage failure → **500** deliberately, so Razorpay retries. Never 200 on a
+  failed write.
+
+**Events.** Nine subscribed. Five open cases (`payment.failed`,
+`subscription.halted`, `subscription.pending`, `invoice.expired`, plus the
+simulated `checkout.abandoned`). Five are recovery signals
+(`payment.captured`, `order.paid`, `payment_link.paid`, `subscription.charged`,
+`invoice.paid`) — stored and stamped processed, attributed to actions in Run 5.
+
+---
+
+## New commands
+
+```
+pnpm ingest              drain raw_events once and exit (worker --once)
+pnpm dev:worker          poll raw_events every 5s
+pnpm webhook:smoke       end-to-end webhook test; BASE_URL=… to target prod
+pnpm eval:seed 500 --seed 42        generate + insert synthetic cases
+pnpm eval:seed 500 --seed 42 --dry-run   print the distribution, write nothing
+pnpm eval:fingerprint    sha256 of the synthetic lane as stored in Neon
+```
+
+`pnpm eval:seed` **deletes existing synthetic cases first**, scoped to
+`is_synthetic = true`. Live cases are never touched. That is what makes re-running
+the same seed converge instead of accumulate.
 
 ---
 
 ## Decisions made this run
 
-Nine ADRs appended to `docs/DECISIONS.md`:
-
-- **ADR-017** pure/impure split for env and policy loading
-- **ADR-018** env validation memoised on first access, not at import
-- **ADR-019** per-surface env schemas (least privilege as code)
-- **ADR-020** money is `bigint` in Postgres, branded `number` in TypeScript
-- **ADR-021** `users` table added outside the nine
-- **ADR-022** extensionless relative imports in workspace packages
-- **ADR-023** web app loads `.env.local` from the repository root
-- **ADR-024** TypeScript pinned to 6.x so `typescript-eslint` runs
-- **ADR-025** two secrets generated locally instead of halting
+- **Signature + normalization in core, not the route.** Deterministic crypto is
+  not I/O. Makes the trust boundary unit-testable and keeps the route thin.
+- **`checkout.abandoned` is our own event type.** Razorpay emits no "customer
+  left" event. Naming it explicitly keeps the simulated lane visible in
+  `raw_events.event_type`.
+- **Unreadable amount → 0 paise plus a warning, not a rejected delivery.**
+  `amount_paise` is NOT NULL. A zero-amount case is visibly wrong and reaches the
+  exception list; dropping the event would hide it.
+- **A fractional amount is refused, not rounded.** A fractional "paise" value
+  means the field is really rupees. Rounding would silently corrupt money.
+- **Contact identifiers are hashed, never stored.** `cust_<16 hex>` from
+  sha256 when only an email or phone is available, so the cross-case contact cap
+  can recognise a repeat customer while the system still holds no PII.
+- **`insufficient_funds` clusters at 70%, not 100%, in the salary window.**
+  Forcing 100% would make the salary-cycle heuristic trivially perfect and
+  overstate Arm C — exactly threat 3 in `EVAL_METHODOLOGY.md`. The window is ~37%
+  of the month, so 70% is a strong, visible cluster with a real tail to get wrong.
+- **Bursts share one issuer.** A real outage hits one bank, and sharing the issuer
+  is what makes the correlation visible to the bandit's issuer × method bucket.
+- **A fixed reference date (`2026-03-01T00:00:00Z`)** anchors the simulation
+  window. Using the wall clock would silently break "same seed, same data"
+  tomorrow. Override with `--reference-date`.
 
 ---
 
 ## Known issues
 
 ```
-- [HIGH] Vercel deployment fails ~1s after creation, for every commit including
-  a commit containing only .gitignore — apps/web — blocks next phase? NO for
-  building, YES for the Run 2 webhook, which needs a live public URL.
-- [LOW] pnpm prints a peer-dependency warning on install — cosmetic, no effect.
-- [LOW] next-auth's `jose` dependency warns about DecompressionStream in the Edge
-  runtime during build — a warning from a transitive dep, build succeeds.
+- [LOW] The deleted `razorpay` Vercel project still posts a GitHub commit status,
+  so commits show two checks and an aggregate `failure` while `reflow` is green
+  — GitHub/Vercel integration — blocks next phase? NO.
+- [LOW] Generator source mix lands at 56.8/19.2/12.4/11.6 against a 55/20/15/10
+  target; checkout is ~2.6pp low. Binomial noise at n=500 (σ≈1.6pp), inside the
+  ±4pp test tolerance. Not a defect; noted so nobody "fixes" it into a bias.
+- [LOW] pnpm peer-dependency warning on install — cosmetic, unchanged from Run 1.
+- [LOW] next-auth's `jose` warns about DecompressionStream in the Edge runtime
+  during build — transitive dependency, build succeeds.
 ```
 
-### The Vercel failure, in detail
+### Bug found and fixed this run, worth remembering
 
-**Status:** three deployments, three failures, each recorded as failed **one
-second** after being created.
+The normalizer originally read entities from the inner `payload` object, but
+`raw_events.payload` stores the **whole envelope**. Every unit test passed while
+every live event silently produced a null-filled case with no `external_ref`.
 
-| commit | deployment | result |
-|---|---|---|
-| `29a014c` (only `.gitignore`) | 6229490226 | failure in 1s |
-| `85df792` (full app) | 6231142679 | failure in 1s |
-| `f4716a8` (engines fix) | — | failure in 1s |
+It was caught only by the end-to-end smoke test, which asserted the resulting
+`recovery_case` rather than the normalizer's return value. `normalizeEvent` now
+accepts either shape, and `normalize.test.ts` has a
+"full webhook envelope (the real ingest shape)" block so it cannot regress.
 
-`https://razorpay-theta-ten.vercel.app` returns **404** — no production
-deployment has ever succeeded.
-
-**What was ruled out by actually testing it:**
-
-- The build itself is fine. `pnpm build` succeeds locally.
-- It is not missing env vars. The build was re-run with **only** `DATABASE_URL`
-  and `AUTH_URL` set — exactly Vercel's current state — and succeeded, because
-  `/` reads no env and `/dashboard` is `force-dynamic`.
-- It is not the lockfile. `lockfileVersion: '9.0'`, and
-  `pnpm install --frozen-lockfile` succeeds.
-- It is not `engines.node`. The range was removed in `f4716a8`; still fails.
-- It is not a missing root directory. `apps/web` is confirmed present in the
-  pushed tree via the GitHub contents API.
-
-**Why it could not be diagnosed further:** the Vercel CLI is logged out
-(`npx vercel whoami` → "Logged out"), so the build logs are unreachable from this
-session. A one-second failure across every commit — including one with no
-application in it at all — points at project or account level rejection before
-any build begins, not at repository content.
-
-**What the human should check, in order:**
-
-1. Run `npx vercel login`, then
-   `npx vercel inspect dpl_HhxqUNj6J4b4zA57gg4VXMYsJQKH --logs`.
-   That single command should name the cause outright.
-2. In Vercel → Project → Settings → Build & Deployment, confirm **"Include source
-   files outside of the Root Directory in the Build Step" is ENABLED.** This
-   monorepo *requires* it: `apps/web` imports `../../packages/*` via
-   `transpilePackages`, reads `../../policy.yaml`, and needs the root
-   `pnpm-workspace.yaml` and `pnpm-lock.yaml` to install `workspace:*` deps. With
-   this off, Vercel copies only `apps/web` and install fails almost immediately —
-   which matches the one-second symptom exactly.
-3. Confirm **Root Directory** is `apps/web` and the project is not paused or over
-   its Hobby-plan build quota.
+**Lesson for later runs: a unit test that feeds a hand-made fixture proves less
+than one assertion against a row that actually reached Postgres.**
 
 ---
 
 ## Incomplete work
 
-- **Vercel deployment is red.** Everything needed for it to go green is committed;
-  the blocker is a Vercel-side setting or account state this session cannot read.
-  See above.
-- **`packages/llm` is interface-only.** `LlmProvider`, `CompletionResult`, and
-  `InjectionVerdict` are defined and typechecked. No Groq client, no prompts, no
-  injection screen, no response cache — all Run 3.
-- **`eval/` is two placeholder scripts.** `pnpm eval` and `pnpm eval:seed` run,
-  validate env, load policy, and print what they will do. No generator, no arms,
-  no `RESULTS.md` — Run 7.
-- **`apps/worker` is a boot check.** It validates env, loads policy, proves it can
-  reach Neon, and exits. No ingest, diagnose, plan, schedule, execute, observe, or
-  learn — Runs 2 to 5.
-- **No shadcn/ui components installed.** The token set is in `globals.css` and
-  `components.json` is configured, so `pnpm dlx shadcn@latest add <component>`
-  works. Nothing was generated because Run 1 forbids UI beyond a bare page.
-- **`docs/UI_DESIGN_SYSTEM.md` not applied.** Read it in Run 6 before styling.
-- **No `pgboss.*` tables.** pg-boss creates its own schema; it arrives in Run 5.
-- **`DEMO_TIME_SCALE` is validated but nothing consumes it.** The central
-  scheduling helper is Run 5. Do not compute a delay at a call site.
+- **No diagnosis.** `recovery_cases.root_cause`, `cause_confidence`, and
+  `cause_by` are still null on every live case. Run 3.
+- **`packages/llm` is still interface-only.** No Groq client, no prompts, no
+  injection screen, no cache. Run 3.
+- **`eval/src/index.ts` is still a placeholder.** The generator and seeding are
+  real; the three arms and `RESULTS.md` are Run 7.
+- **Checkout abandonment has no producer.** The normalizer, event type, and
+  synthetic path all exist, but nothing emits `checkout.abandoned` against the
+  live lane. Synthetic cases cover it.
+- **Recovery-signal events are stored, not attributed.** They get stamped
+  processed with no case; matching them to actions inside
+  `attribution.window_hours` is Run 5.
+- **Ingest has no `merchant_id` routing.** Every case is attributed to the single
+  seeded merchant, resolved by earliest `created_at`. Multi-tenancy stays modelled
+  but not enforced.
+- **`DEMO_TIME_SCALE` still unconsumed.** Central scheduling helper is Run 5.
+- **No `pgboss.*` tables.** Run 5.
 
 ---
 
 ## Verification performed
 
-Every line below was run. Commands and results, not inspection.
+Every line was run. Commands and results, not inspection.
 
 ```
-1. .env.local ignored
-   → git check-ignore -v .env.local
-   → ".gitignore:7:.env*  .env.local", exit 0. PASS
+1. Correctly-signed POST → raw_events row AND recovery_case
+   → pnpm dev; pnpm webhook:smoke
+   → 200 {"received":true,"duplicate":false}; 1 raw_events row;
+     1 recovery_case: source=payment, amount_paise=250000, method=card,
+     issuer=hdfc, error_reason=insufficient_funds, status=open,
+     is_synthetic=false; raw event stamped processed_at. PASS
 
-2. No secret in git history
-   → git log --all -p | Select-String "npg_|rzp_test_|gsk_"
-   → 10 matches, exit 0. NOT EMPTY — but zero are real credentials.
-     All 10 are: prefix checks in source (startsWith('rzp_test_')),
-     fake test fixtures (rzp_test_FAKEKEY123456, gsk_fake000...),
-     documentation prose, and the checklist's own grep pattern.
-     "npg_" (the Neon password prefix) matched ZERO times.
-   → Stronger check run instead: each live value from .env.local was
-     searched for across `git log --all -p`. Every one absent, including
-     the Neon password. Only .env.example is tracked. PASS on intent.
+2. Same payload twice → exactly one case
+   → second POST returned 200 {"received":true,"duplicate":true}
+   → raw_events rows=1, recovery_cases=1. PASS
 
-3. pnpm typecheck
-   → clean across all 6 projects, exit 0. PASS
+3. Incorrectly-signed payload rejected 400
+   → bad signature → 400; missing header → 400
+   → both stored nothing (raw_events rows=0). PASS
 
-4. Migration applied to Neon — nine tables listed
-   → pnpm --filter @reflow/db verify (queries information_schema)
-   → merchants, raw_events, recovery_cases, plans, actions, outcomes,
-     audit_log, exceptions, bandit_arms  [9/9 domain] + users [auth]
-   → 33 indexes · 4/4 %_paise columns bigint ·
-     raw_events.provider_event_id UNIQUE present · 1 merchant seeded
-   → exit 0. PASS
+4. 500 synthetic cases in Neon with ground_truth
+   → pnpm eval:seed 500 --seed 42
+   → "inserted 500 synthetic case(s)"
+   → pnpm eval:fingerprint → 500 synthetic, 500 with ground_truth. PASS
 
-5. pnpm dev serves a page at /
-   → GET http://localhost:3000/ → 200, 17577 bytes, contains "Reflow". PASS
+5. Distribution assertions pass, breakdown printed
+   → pnpm eval:seed 500 --seed 42 --dry-run  (full output in the phase report)
+   → sources 56.8/19.2/12.4/11.6 vs 55/20/15/10
+   → terminal 12.2% vs 12%
+   → payment causes (n=260): 22.7/23.8/14.6/11.5/13.1/5.8/3.5/5.0
+     vs 24/20/16/12/12/6/6/4
+   → issuer_down: 4 bursts, sizes [16,15,11,11], each one bank, 30-min windows
+   → insufficient_funds 71/100 in the 18th-28th IST window
+   → 500/500 complete ground_truth; 264 unique customers
+   → 48 generator tests assert all of this. PASS
 
-6. Login works with the seeded user
-   → scripted against the running dev server:
-     GET /dashboard signed out → 307 to /login?callbackUrl=... PASS
-     POST /api/auth/callback/credentials, wrong password → no session. PASS
-     POST with the seeded credential → authjs.session-token set. PASS
-     GET /api/auth/session → demo@reflow.dev + merchantId. PASS
-     GET /dashboard authenticated → 200, all 8 gate names rendered. PASS
+6. Re-running seed 42 produces identical data
+   → pnpm eval:fingerprint  → d48a1dbb…e735d5
+   → pnpm eval:seed 500 --seed 42  (cleared 500, inserted 500)
+   → pnpm eval:fingerprint  → d48a1dbb…e735d5  IDENTICAL. PASS
+   → in-memory fingerprint 357500545008297e stable across runs.
 
-7. policy.yaml loads and Zod-validates
-   → pnpm test → packages/core/src/policy/load.test.ts reads the REAL
-     policy.yaml at the repo root, not a fixture.
-   → version 1.0.0, 8 gates, attempt_cap 3, cooling 4h, contact cap 3,
-     quiet 21:00-09:00 Asia/Kolkata, ceiling 2500000 paise, pre-debit
-     24h, attribution 72h, arms [2,6,18,48], 4 terminal causes. PASS
-   → 70 tests total, 4 files, all passing, exit 0.
+7. pnpm typecheck clean, pnpm test green
+   → typecheck exit 0 across all 6 projects
+   → test exit 0 — 8 files, 190 tests passed. PASS
 
-8. Env validation crashes when a variable is removed
-   → removed GROQ_API_KEY from .env.local, ran the worker:
-     "Invalid environment for \"worker (Railway)\". 1 problem(s):
-        - GROQ_API_KEY: missing"  exit 1. PASS
-   → restored; all 13 variables confirmed present; worker then booted,
-     loaded policy 1.0.0, and reached Neon (SELECT 1 → 1), exit 0.
-   → 28 further env tests assert every required variable crashes by name.
+8. Push succeeded, Vercel deploy green
+   → git push origin main → f801935..0cc5dde, exit 0
+   → reflow project: "Deployment has completed" (SUCCESS)
+   → GET https://reflow-puce.vercel.app/ → 200, contains "Reflow"
+   → BASE_URL=https://reflow-puce.vercel.app pnpm webhook:smoke
+     → ALL 20 CHECKS PASSED against the real production webhook. PASS
+   → the dead `razorpay` project also reports a failure status; see Known issues.
 
-9. Push succeeded; Vercel status reported
-   → git push origin main → 29a014c..85df792, then 85df792..f4716a8, exit 0
-   → Vercel: FAILURE. See Known issues. Reported, not hidden.
-
-Also run, beyond the required criteria:
-   pnpm lint                → exit 0
-   pnpm build               → exit 0 (Route /: static; /dashboard, /login: dynamic)
-   pnpm build with ONLY DATABASE_URL + AUTH_URL → exit 0
-   pnpm install --frozen-lockfile → exit 0
-   purity fence probe       → Date.now() in core rejected by eslint, then deleted
+Also run:
+   pnpm lint         → exit 0 (purity fence intact)
+   pnpm build        → exit 0, /api/webhooks/razorpay registered dynamic
+   pnpm ingest       → 0 pending, clean drain
 ```
 
 ---
@@ -317,69 +314,41 @@ Also run, beyond the required criteria:
 ## Git state
 
 ```
-Last commit: f4716a8  fix(vercel): drop engines.node range that Vercel rejects at build init
+Last commit: 0cc5dde  fix(normalize): read entities from the stored envelope, add smoke test
 Branch:      main
-Pushed:      y  (origin/main == f4716a8)
+Pushed:      y  (origin/main == 0cc5dde)
 History:     never rewritten, never force-pushed
 
-Commits this run, in order:
-  29a014c  chore: gitignore before anything else          <- alone, first, before any code
-  72034dc  docs: specification baseline, policy, and env template
-  bd12899  feat: pnpm monorepo with strict TS, pure core, drizzle schema, and tooling
-  9d1d43d  feat(db): nine-table schema migrated to Neon, demo merchant seeded
-  1d1e105  fix: extensionless relative imports so Next resolves workspace TS source
-  85df792  feat(web): auth, protected dashboard, and monorepo-aware env and policy loading
-  f4716a8  fix(vercel): drop engines.node range that Vercel rejects at build init
+Commits this run:
+  a89e519  docs: correct Vercel project to reflow and record the permanent webhook URL
+  60da581  feat(ingest): signed webhook receiver, pure normalizer, transactional ingest
+  b174968  feat(eval): seeded synthetic generator with bursty outages and ground truth
+  0cc5dde  fix(normalize): read entities from the stored envelope, add smoke test
+  (+ this docs commit)
 
 .env.local ignored and never committed:  verified — git check-ignore -v .env.local
                                          → .gitignore:7:.env*
-Git identity: set LOCALLY for this repo only (PRCSM / noreply address).
-              Global git config was NOT touched.
 ```
-
-**Note on `.gitignore`:** `.env*` also matched `.env.example`, which the spec
-requires to be tracked. A `!.env.example` negation was added on line 8. Verified
-with `git ls-files --others --exclude-standard`: `.env.example` listed,
-`.env.local` absent.
 
 ---
 
 ## Human action needed
 
-**1 — Fix the Vercel deployment (blocks Run 2's webhook).**
-Run `npx vercel login`, then
-`npx vercel inspect dpl_HhxqUNj6J4b4zA57gg4VXMYsJQKH --logs`.
-Most likely fix: enable **"Include source files outside of the Root Directory in
-the Build Step"** in Project → Settings → Build & Deployment. This monorepo
-cannot build without it.
+**1 — Register the webhook. This is the only manual step in the whole build.**
+See the block at the end of the Run 2 phase report. The endpoint is already
+deployed and has been smoke-tested in production, so registration is the last
+piece.
 
-**2 — Add the missing Vercel environment variables.** Only `DATABASE_URL` and
-`AUTH_URL` are set. The build does not need more, but `/dashboard`, `/login`, and
-the Run 2 webhook do. Vercel still needs:
+Use the **existing** `RAZORPAY_WEBHOOK_SECRET` from `.env.local`. It was generated
+in Run 1 and is already in Vercel. Generating a new one breaks every signature
+check.
 
-```
-RAZORPAY_KEY_ID            rzp_test_… from the Razorpay dashboard
-RAZORPAY_KEY_SECRET        shown once at key generation
-RAZORPAY_WEBHOOK_SECRET    copy the value already in .env.local
-AUTH_SECRET                copy the value already in .env.local
-DEMO_TIME_SCALE            1
-POLICY_PATH                ./policy.yaml
-```
+**2 — Optional, cosmetic.** Remove the deleted `razorpay` project's GitHub
+integration so commits stop showing a red check. GitHub repo → Settings →
+Integrations, or delete the stale project in the Vercel dashboard.
 
-Do **not** add `GROQ_API_KEY` to Vercel. It is worker-only by design, and the web
-schema will reject the deployment's request for it as unnecessary — least
-privilege, per `docs/ENVIRONMENT_VARIABLES.md`.
-
-Also set `AUTH_URL` to `https://razorpay-theta-ten.vercel.app` (not localhost).
-
-**3 — Note on two generated secrets.** `RAZORPAY_WEBHOOK_SECRET` and
-`AUTH_SECRET` were blank in `.env.local` and were generated locally this run
-(ADR-025). Neither has been printed anywhere. **In Run 2, register the webhook
-using the `RAZORPAY_WEBHOOK_SECRET` value already in your `.env.local`** — do not
-generate a new one, or every signature check will fail.
-
-**After Run 2:** register the webhook URL in Razorpay. Run 2's report gives the
-exact URL and event list.
+**3 — Before Run 8:** `GROQ_API_KEY` goes on Railway, not Vercel. The worker is
+the only surface that calls an LLM.
 
 **After Run 8:** run `docs/TESTING_GUIDE.md`.
 
@@ -388,26 +357,27 @@ exact URL and event list.
 ## Dashboard login
 
 ```
-URL       /login   (local: http://localhost:3000/login)
+URL       /login   (prod: https://reflow-puce.vercel.app/login)
 email     demo@reflow.dev
 password  reflow-demo-2026
 ```
 
-This default is **public in this repository**. It guards synthetic data only and
-no PII, and judges need to sign in. To use a private credential instead:
-`$env:SEED_USER_PASSWORD = '…'` then `pnpm db:seed` — the seed re-hashes on every
-run, so rotation takes effect immediately.
+Public in this repository by design — synthetic data only, no PII. Override with
+`$env:SEED_USER_PASSWORD = '…'` then `pnpm db:seed`.
 
 ---
 
 ## Next phase
 
-**RUN 2 — Ingest.** Webhook receiver at `/api/webhooks/razorpay` with HMAC
-verification and idempotency on `provider_event_id`, normalization of the four
-sources into `recovery_cases`, and the deterministic synthetic generator.
+**RUN 3 — Diagnosis.** Deterministic rule table mapping
+`(error_code, error_source, error_step, method)` → one root cause; the LLM tail
+for unmapped tuples under a Zod schema; Llama Prompt Guard as gate 0 on all
+untrusted text; `cause_by` recording `'rule'` or `'llm'` on every case.
 
-**Webhook base URL, once the deploy is green:**
-`https://razorpay-theta-ten.vercel.app`
+The generator already emits realistic error tuples for every non-checkout cause
+(`CAUSE_ERROR_SIGNATURES` in `eval/src/generator/distribution.ts`), and
+`ground_truth.true_root_cause` is the label to score against. **Build the rule
+table against that table, and measure precision on the held-out slice.**
 
 ---
 
@@ -415,36 +385,36 @@ sources into `recovery_cases`, and the deterministic synthetic generator.
 
 Traps a fresh session would otherwise hit the hard way:
 
-- **`.gitignore` covering `.env*` is the first commit of Run 1, before any code.**
-  Done. Keep the `!.env.example` negation on line 8 — without it the template is
-  silently untracked.
-- **`packages/core` must stay pure.** Now enforced by ESLint, not trust. Time is a
-  parameter. Only `env/load.ts` and `policy/load.ts` are exempt; do not add a third.
-- **All money is integer paise.** Use the `Paise` brand from `@reflow/core`.
-  `paise()` throws on floats and negatives. The db verify script fails the build if
-  a `%_paise` column is not `bigint`.
-- **Neon needs the pooled connection string.** Enforced for `neon.tech` hosts only,
-  so docker-compose Postgres still works. Region is `ap-southeast-1`.
-- **`.env.local` is at the REPO ROOT, and Next looks in `apps/web`.** Handled in
-  `next.config.ts` (ADR-023). `POLICY_PATH` has the same trap, handled in
-  `apps/web/src/lib/policy.ts` by walking up from `cwd`. Any new app needs both.
-- **Anything read at runtime must be added to `outputFileTracingIncludes`.** Next's
-  tracing only sees imports. `policy.yaml` is already listed for `/dashboard`.
+- **`raw_events.payload` is the whole envelope.** Entities are at
+  `payload.<entity>.entity`. `normalizeEvent` unwraps either shape — do not
+  "simplify" that away.
+- **HMAC is computed over the raw body bytes.** Never `JSON.parse` then
+  re-serialise before verifying; key order and whitespace change the digest.
+- **The webhook must never process inline.** Verify, insert, 200. A slow handler
+  gets retried and retries cause duplicate work.
+- **Return 500, not 200, when the insert fails.** A 200 tells Razorpay the event
+  was accepted and it will never resend.
+- **`pnpm eval:seed` deletes synthetic cases first.** Scoped to
+  `is_synthetic = true`. Never widen that filter.
+- **The generator's draw ORDER is part of the dataset.** Reordering random draws
+  changes output at the same seed. Adding a draw mid-sequence invalidates every
+  stored fingerprint.
+- **Never call `Math.random()` or read the clock in `eval/`.** Determinism fails
+  silently and nothing tells you.
+- **`packages/core` must stay pure**, enforced by ESLint. Time is a parameter.
+  `node:crypto` is permitted — deterministic, no I/O. Only `env/load.ts` and
+  `policy/load.ts` are exempt; do not add a third.
+- **All money is integer paise.** A fractional amount is refused, never rounded.
 - **Do not write `.js` in relative imports** inside workspace packages (ADR-022).
-  Next's webpack will not resolve it to `.ts`.
-- **pnpm 11 replaced `onlyBuiltDependencies` with the `allowBuilds` map** in
-  `pnpm-workspace.yaml`, and `strictDepBuilds` now defaults to true — an unapproved
-  build script is a hard install failure. `esbuild` is already allowed; tsx and
-  vitest cannot start without it.
-- **TypeScript is pinned to 6.0.3** (ADR-024). Bumping to 7.x breaks
-  `typescript-eslint` and therefore the purity fence.
-- **Groq free tier binds on TPM (8,000/min), not RPD.** Hitting limits during eval
-  means the rule table is too thin — a design smell, not a quota problem. Cache LLM
-  responses by input hash.
-- **Guardrails re-run at execution time**, not only at planning. A plan made at
-  20:00 for 02:00 that fires at 09:30 must be re-checked.
-- **`DEMO_TIME_SCALE`** compresses all scheduling delays for the video. One central
-  helper; no call site computes a delay independently. Retrofitting means touching
-  every call site.
+- **TypeScript is pinned to 6.0.3** (ADR-024). 7.x breaks `typescript-eslint` and
+  with it the purity fence.
+- **`.env.local` is at the repo ROOT** and Next looks in `apps/web`; handled in
+  `next.config.ts`. `POLICY_PATH` is resolved by walking up from `cwd`.
+- **Neon needs the pooled connection string.** Enforced for `neon.tech` hosts only.
+- **Groq free tier binds on TPM (8,000/min).** Hitting limits during eval means the
+  rule table is too thin — a design smell, not a quota problem. Cache by input hash.
+- **Guardrails re-run at execution time**, not only at planning.
+- **Assert against rows that reached Postgres, not just function returns.** The one
+  real bug in Run 2 passed every unit test and was caught only end to end.
 - **Never claim a completion criterion passed without running it.** The human tests
-  once, at the end. A false pass here surfaces on Day 6 with no time to fix it.
+  once, at the end.
