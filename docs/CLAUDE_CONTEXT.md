@@ -16,7 +16,7 @@ honest and keep it current.
 | Vercel project | **`reflow`** |
 | Production URL | **https://reflow-puce.vercel.app** |
 | Webhook target | **https://reflow-puce.vercel.app/api/webhooks/razorpay** |
-| Webhook status | **REGISTERED and enabled** in Razorpay test mode |
+| Webhook status | **REGISTERED and enabled**, 10 events, verified in production |
 | Vercel env | all set except `GROQ_API_KEY` — worker-only, never add it |
 
 The old `razorpay` Vercel project is deleted. Anything referring to it or to
@@ -26,25 +26,27 @@ The old `razorpay` Vercel project is deleted. Anything referring to it or to
 
 ## Current phase
 
-`RUN 3 — Diagnosis · ✅ done`
+`RUN 4 — Policy and guardrails · ✅ done`
 
-Next: **RUN 4 — Policy + guardrails** (`CLAUDE_CODE_PROMPTS.md`)
+Next: **RUN 5 — Scheduler + execution + outcomes** (`CLAUDE_CODE_PROMPTS.md`)
 
 ---
 
 ## Completed
 
-**Run 1 — Foundation.** Git secured, pnpm monorepo, nine-table schema on Neon,
-env and policy validation, auth, CI.
+**Run 1 — Foundation.** Git secured, monorepo, nine-table schema on Neon, env and
+policy validation, auth, CI.
 
 **Run 2 — Ingest.** Signed webhook receiver, pure four-source normalizer,
 transactional ingest, seeded synthetic generator.
 
-**Run 3 — Diagnosis.** Closed 21-cause taxonomy, deterministic rule table at
-100% coverage and 99.6% accuracy, Razorpay downtime signal as a first-class
-diagnosis path, Groq provider with a persisted cache, Prompt Guard gate 0, a
-Zod-validated LLM tail, and lazy per-case explanations. All nine criteria verified
-by running them.
+**Run 3 — Diagnosis.** Closed 21-cause taxonomy, rule table at 100% coverage and
+99.6% accuracy, Razorpay downtime signal, Groq provider with a persisted cache,
+Prompt Guard gate 0, Zod-validated LLM tail, lazy explanations.
+
+**Run 4 — Policy and guardrails.** Cause → intervention map for all 21 causes,
+static and bandit timing strategies, downtime-aware scheduling, and the eight-gate
+chain with every gate failing closed. 500 plans written, terminal contact = 0.
 
 ---
 
@@ -52,10 +54,10 @@ by running them.
 
 | # | Run | Status |
 |---|---|---|
-| 1 | Foundation — gitignore, monorepo, schema, auth | ✅ Done |
-| 2 | Ingest — webhooks, normalization, synthetic generator | ✅ Done |
-| 3 | Diagnosis — rule engine, LLM tail, injection gate | ✅ Done |
-| 4 | Policy + guardrails | ⬜ Not started |
+| 1 | Foundation | ✅ Done |
+| 2 | Ingest | ✅ Done |
+| 3 | Diagnosis | ✅ Done |
+| 4 | Policy + guardrails | ✅ Done |
 | 5 | Scheduler + execution + outcomes | ⬜ Not started |
 | 6 | Dashboard | ⬜ Not started |
 | 7 | Eval harness + landing page | ⬜ Not started |
@@ -63,189 +65,171 @@ by running them.
 
 ---
 
-## THE HEADLINE NUMBERS
+## THE GATE SUMMARY — 500 cases
 
 ```
-Diagnosis split, 500 synthetic cases          Rule table vs ground truth
-------------------------------------          ---------------------------
-by rule            500   100.0%               coverage        500  100.0%
-by downtime_signal   0     0.0%  (see below)  correct         498   99.6%
-by LLM               0     0.0%               precision              99.6%
-unknown              0     0.0%
-parse-failure rate         0.0%
+scanned 500 · plans written 500 · no plan 0 · failed 0
+
+disposition        allow 332 · rescheduled 70 · escalated 22 · dropped 19 · stopped 57
+                   downgraded 0  (see Known issues — needs executed actions)
+
+gate                evaluated  passed  failed  fail-closed
+  injection_screen        500     500       0            0
+  attempt_cap             500     500       0            0
+  cooling_window          500     500       0            0
+  contact_cap             500     500       0            0
+  quiet_hours             500     394     106            0
+  terminal_check          500     443      57            0
+  amount_ceiling          500     473      27            0
+  compliance              500     471      29            0
+
+outcome decided by  quiet_hours 70 · terminal_check 57 · amount_ceiling 22 · compliance 19
+
+final actions       delayed_retry 133 · stop 91 · immediate_retry 85 · pre_debit_notice 64
+                    payment_link 45 · escalate_human 39 · nudge 35 · promise_to_pay 8
+
+timing basis        static_table 215 · immediate 179 · salary_window 106
+
+THE INVARIANT       terminal cases 57 · contact plans 107 · contact on TERMINAL 0
 ```
 
-`downtime_signal` is 0% on the synthetic lane **by design** — the generator emits
-no downtime events. That path is verified separately, end to end, against live
-Razorpay-shaped payloads and persisted rows (`pnpm downtime:smoke`).
+**Read the `decided by` row against the `failed` column.** `terminal_check` failed
+57 times and decided all 57 — it out-ranked 36 quiet-hours failures and 5
+amount-ceiling failures on those same cases. That is ADR-032's severity resolution
+working: a terminal case cannot be turned back into an action by any other gate.
 
-The LLM answering 0% is the intended shape, not a gap: POLICY_SPEC §6 says the
-rule engine decides and the LLM handles the tail. The tail is proven working on an
-unmapped tuple by `pnpm downtime:smoke` and `pnpm injection:smoke`.
-
-### Per-cause accuracy
-
-All 21 causes at 100% recall and 100% precision except:
-
-| cause | truth | predicted | correct | recall | precision |
-|---|---|---|---|---|---|
-| `customer_opt_out` | 16 | 14 | 14 | 87.5% | 100.0% |
-| `mandate_revoked` | 3 | 5 | 3 | 100.0% | 60.0% |
-
-**The only confusion in the dataset:** 2 cases of
-`customer_opt_out → mandate_revoked`. On a mandate rail these are genuinely
-indistinguishable from the error fields — both present as
-`(BAD_REQUEST_ERROR, customer, payment_authorization, emandate)`. **Both are
-terminal**, so gate 5 stops the case either way and the money outcome is
-identical. Not worth contriving a discriminator for; reported instead.
+Every one of the 500 plans persists all eight verdicts, passes included. 76 dropped
+plans are retained with their reasons — nothing is silently discarded.
 
 ---
 
 ## Files changed this run
 
-**New — `packages/core/src/diagnose/`** (all pure)
-`taxonomy.ts` · `rules.ts` · `downtime.ts` · `port.ts` · `index.ts` ·
-`rules.test.ts` · `downtime.test.ts` · `diagnose.test.ts`
+**New — `packages/core/src/timing/`** (all pure)
+`clock.ts` (the ONE delay-scaling helper + IST helpers) · `strategy.ts` ·
+`static-strategy.ts` · `bandit-strategy.ts` · `index.ts` · `timing.test.ts`
 
-**New — `packages/core/src/normalize/`**
-`downtime.ts` (the `payment.downtime.*` normalizer)
+**New — `packages/core/src/policy/`**
+`interventions.ts` (the 21-cause map) · `engine.ts` · `engine.test.ts`
 
-**New — `packages/llm/src/`**
-`cache.ts` · `groq.ts` · `guard.ts` · `diagnosis-tail.ts` · `explain.ts` ·
-`llm.test.ts` (rewrote `index.ts`)
-
-**New — `packages/db/src/schema/`**
-`downtime-windows.ts` · `llm-cache.ts` · migration `0001_dry_malice.sql`
+**New — `packages/core/src/guardrails/`** (all pure)
+`types.ts` · `gates.ts` · `chain.ts` · `index.ts` · `gates.test.ts` · `chain.test.ts`
 
 **New — `apps/worker/src/`**
-`diagnose/index.ts` · `explain/index.ts` · `llm/pg-cache.ts` ·
-`ingest/downtime.ts` · `scripts/diagnose.ts` · `scripts/downtime-smoke.ts` ·
-`scripts/injection-smoke.ts` · `scripts/explain.ts`
-
-**New — `eval/src/`**
-`score-diagnosis.ts`
+`plan/index.ts` · `scripts/plan.ts` · `scripts/plan-smoke.ts`
 
 **Modified**
-`packages/core/src/types/enums.ts` (`cause_by` gained `downtime_signal`) ·
-`packages/core/src/index.ts` · `packages/db/src/table-names.ts` (domain vs
-supporting) · `packages/db/src/scripts/verify.ts` · `apps/worker/src/ingest/index.ts`
-(downtime branch) · `eval/src/generator/distribution.ts` and `index.ts` (taxonomy
-correction + day counts + window clamp) · `eval/src/generator/generator.test.ts` ·
-`docs/DECISIONS.md` (ADR-026…031) · `docs/DATABASE_DESIGN.md` · `README.md`
+`packages/core/src/types/enums.ts` (`TimingStrategy` → `TimingStrategyName`, to free
+the name for the interface) · `packages/core/src/index.ts` ·
+`packages/core/src/policy/index.ts` · `package.json` and
+`apps/worker/package.json` (scripts) · `docs/DECISIONS.md` (ADR-032…036)
 
 ---
 
 ## Architecture changes
 
-- **`cause_by` now has three values:** `rule`, `llm`, `downtime_signal`.
-- **Diagnosis precedence is downtime → rules → LLM → unknown.** Encoded in
-  `diagnoseCase`, and the order is the design.
-- **Core calls the LLM through an injected port** (`DiagnosisTailPort`). Core never
-  imports `@reflow/llm`; the purity fence blocks it. The worker wires the two.
-- **`packages/core/src/diagnose/taxonomy.ts` is the single source of truth** for
-  causes. The rule engine, the LLM prompt, the Zod schema, and the generator all
-  import it, so the label sets cannot drift.
+None to the shape. Four things a future session must know:
+
+- **Gates are evaluated in order 0→7, but the disposition is resolved by
+  SEVERITY** (ADR-032). `stop_case` wins absolutely. This is what makes "a terminal
+  case is never contacted" a guarantee rather than a consequence of gate numbering.
+- **Every gate fails closed** (ADR-033), and a fail-closed block carries
+  `failedClosed: true` so it is distinguishable from an ordinary policy refusal.
+  The two mean different things to an operator: one is a decision, one is a data
+  problem.
+- **`scaleDelayMs` / `scheduleAfter` are the only places a delay is scaled or a
+  future instant produced** (ADR-034). Do not compute a delay at a call site.
+- **`runGuardrails(plan, state, policy, now)` is pure and re-entrant** (TASK 7).
+  Run 5 calls it a second time immediately before execution, and it may legitimately
+  reach a different verdict because the state moved on. That is the feature.
 
 ---
 
 ## Schema changes
 
-Migration `0001_dry_malice.sql` — **additive only**, no existing table touched.
+**None.** Run 4 writes to the existing `plans` and `exceptions` tables and added no
+columns. Migration is still `0001_dry_malice.sql`.
 
-- **`downtime_windows`** — Razorpay issuer outages. UNIQUE on
-  `provider_downtime_id` so `.updated`/`.resolved` upsert one row per outage.
-- **`llm_cache`** — persisted LLM responses keyed `sha256(model + prompt)`.
-
-Table count is now **9 domain + 3 supporting** (`users`, `downtime_windows`,
-`llm_cache`). `pnpm --filter @reflow/db verify` labels them.
-
-Neon state: 500 synthetic cases, all diagnosed, 0 exceptions, 0 undiagnosed.
+Neon state: 500 synthetic cases, all diagnosed, 500 plans (402 pending, 76 dropped,
+22 downgraded), 76 guardrail exceptions.
 
 ---
 
 ## New commands
 
 ```
-pnpm diagnose                 rules + downtime + LLM tail over undiagnosed cases
-pnpm diagnose --rules-only    no LLM at all
-pnpm diagnose --reset         clear diagnoses and exceptions, then re-diagnose
-pnpm score:diagnosis          rule table vs ground_truth, per-cause accuracy
-pnpm downtime:smoke           downtime + LLM tail + cache, row-level assertions
-pnpm injection:smoke          gate 0 blocks a real injection payload
-pnpm explain [-- <case-id>]   lazy per-case explanation, cache-first
+pnpm plan               plan every diagnosed case without a pending plan
+pnpm plan --reset       clear plans and guardrail exceptions, re-plan
+pnpm plan:smoke         row-level proof: gates, invariant, downtime, determinism
 ```
 
 ---
 
 ## Decisions made this run
 
-Six ADRs, `docs/DECISIONS.md` ADR-026…031:
+Five ADRs, `docs/DECISIONS.md` ADR-032…036:
 
-- **026** the generator was corrected to the canonical taxonomy (it was emitting
-  illegal labels for 45% of the dataset)
-- **027** checkout carries a funnel-stage signal, not a provider error
-- **028** days-overdue is carried in `error_reason`, not a new column
-- **029** Razorpay downtime events as a first-class diagnosis path
-- **030** explanations generated worker-side, lazily, per case
-- **031** Prompt Guard is called as a text classifier, not a chat model
+- **032** gates evaluated in order, disposition resolved by severity
+- **033** every gate fails closed, and the block is distinguishable
+- **034** all delays pass through one scaling helper
+- **035** an open outage produces a re-check, not a retry
+- **036** terminal causes produce a `stop` plan, not the absence of a plan
 
 ---
 
 ## Known issues
 
 ```
-- [LOW] 2/500 cases confuse customer_opt_out with mandate_revoked. Genuinely
-  indistinguishable from the error tuple on a mandate rail; both terminal, so the
-  behaviour is identical — blocks next phase? NO.
+- [MEDIUM] contact_cap has never fired against real data: 0 failures in 500 cases.
+  It counts EXECUTED contact actions, and nothing has executed yet — `actions` is
+  empty until Run 5. The gate is correct and unit-tested (including the cross-case
+  property), but it is unproven end to end — blocks next phase? NO, but Run 5 must
+  re-verify it once actions exist.
+- [LOW] cooling_window is in the same position: 0 failures, because it reads
+  `actions.executed_at`. Unit-tested, not yet exercised on real rows.
 - [LOW] The deleted `razorpay` Vercel project still posts a GitHub commit status,
   so commits show two checks and an aggregate failure while `reflow` is green.
+- [LOW] 2/500 cases confuse customer_opt_out with mandate_revoked (Run 3).
+  Both terminal, so the outcome is identical. Asserted harmless in chain.test.ts.
 - [LOW] pnpm peer-dependency warning on install — cosmetic.
-- [LOW] next-auth's `jose` warns about DecompressionStream in the Edge runtime.
 ```
 
-### Three real bugs found and fixed this run
+### One real bug found and fixed this run
 
-1. **Prompt Guard was failing every call.** It is a text-classification model and
-   rejects a system message: *"messages must contains a single user message for
-   text classification models"*. Every guard call returned 400. Gate 0 still
-   blocked attacks because the heuristic pre-screen runs first and fails closed —
-   which is exactly why that layer exists. Caught by the cache assertion, not by a
-   unit test: failed calls are not cached, so the re-run made one extra API call.
-   **Watch for this pattern: a broken component hidden behind a working fallback.**
+**Terminal causes produced no plan at all.** `maxAttempts: 0` on the `STOP`
+intervention made `interventionForAttempt` return null, so `buildPlan` refused with
+`ladder_exhausted` and no row was written. Three tests caught it immediately — a
+missing plan row is indistinguishable from a case the planner never reached, which
+is the exact ambiguity `plans` exists to remove. Fixed to `maxAttempts: 1`
+(ADR-036): `stop` is a decision that must be recorded.
 
-2. **`Number('')` is 0.** `scoreFromGuardOutput` parsed an empty guard response as
-   0.0, i.e. "definitely benign" — failing the security screen OPEN. Now requires
-   a numeric literal and returns `null` otherwise.
-
-3. **Reasoning models return empty content on a tight token budget.** `gpt-oss-*`
-   emit reasoning tokens before any content, so `max_tokens: 180` produced
-   `finish_reason: "length"` with `content: ""`. Budgets are now 700.
-
-Plus a generator bug: day-pool placement could put a case *after* the reference
-date, because the first and last IST days are only partly inside a UTC window.
-Now clamped. Caught by a Run 2 test, which is the argument for keeping them.
+Worth noting what did NOT happen this run: no bug escaped to the row-level stage.
+The unit tests caught the only defect, which is the first time in four runs.
 
 ---
 
 ## Incomplete work
 
-- **No policy engine or guardrail chain.** Every case has a cause; nothing decides
-  what to do about it. `plans` is still empty. Run 4.
-- **No scheduler, no execution, no outcomes.** `actions`, `outcomes`, and
-  `pgboss.*` are untouched. Run 5.
-- **The dashboard does not surface diagnoses.** `explainOneCase` exists and works,
-  but nothing renders it — and the web app cannot generate one, since
-  `GROQ_API_KEY` is worker-only (ADR-030). Run 6 must either read the cached text
-  or call the worker.
-- **`eval/src/index.ts` is still a placeholder.** The three arms and `RESULTS.md`
-  are Run 7.
-- **No held-out slice yet.** EVAL_METHODOLOGY specifies 100 of the 500 held out
-  for diagnosis metrics, never used for tuning. Not implemented; the rule table was
-  scored on all 500. Since the table was never tuned against the labels, this is
-  reporting hygiene rather than leakage — but Run 7 should implement the split.
-- **Mandates are synthetic-only.** The Razorpay account has no Subscriptions, so
-  `subscription.*` events are unavailable. Disclosed in the README.
-- **`DEMO_TIME_SCALE` still unconsumed.** Central scheduling helper is Run 5.
+- **No scheduler and no execution.** `plans` has 402 pending rows and nothing fires
+  them. `actions` and `outcomes` are empty, `pgboss.*` does not exist. Run 5.
+- **`DEMO_TIME_SCALE` is threaded but never exercised at 360×.** The helper and its
+  tests exist; no real run has used a compressed scale. Run 5's scheduler is the
+  first consumer that will matter.
+- **The bandit is implemented but cold.** `bandit_arms` is empty, so
+  `TIMING_STRATEGY=bandit` falls back to static on every case, exactly as designed.
+  Arms only populate once outcomes exist. Run 5.
+- **`pre_debit_notice` ordering is enforced but untested end to end.** Gate 7 blocks
+  a re-presentment without prior notice, and the mandate ladder leads with the
+  notice — but no notice has actually been *sent*, so the second rung has never
+  been reached with a satisfied lead time on real data. Run 5.
+- **The dashboard shows none of this.** 500 plans, 76 dropped with reasons, and the
+  full gate record are in Neon and invisible. Run 6.
+- **`eval/src/index.ts` is still a placeholder.** Three arms and `RESULTS.md` are
+  Run 7.
+- **No held-out slice** (carried from Run 3). EVAL_METHODOLOGY specifies 100 of the
+  500 held out for diagnosis metrics. Run 7.
+- **Mandates are synthetic-only.** The Razorpay account has no Subscriptions.
+  Disclosed in the README.
 
 ---
 
@@ -254,59 +238,53 @@ Now clamped. Caught by a Run 2 test, which is the argument for keeping them.
 Every line was run.
 
 ```
-1. All 500 cases diagnosed
-   → pnpm diagnose --reset
-   → scanned 500, diagnosed 500, failed 0, undiagnosed remaining 0
-   → persisted cause_by in Neon: rule 500. PASS
+1. All 500 cases produce plans; zero causes unhandled
+   → pnpm plan --reset
+   → scanned 500, plans written 500, no plan 0, failed 0
+   → engine.test.ts loops all 21 taxonomy causes and asserts each yields a plan
+   → cases still without a plan: 0. PASS
 
-2. Rule / LLM / downtime split printed, rule share high
-   → same run: rule 500 (100.0%), downtime_signal 0 (0.0%), llm 0 (0.0%)
-   → rule share is 100%, which is the shape POLICY_SPEC §6 wants. PASS
+2. Gate summary printed
+   → same run; full table above. All 8 gates evaluated 500× each.
+   → pnpm plan:smoke → "every persisted plan has all 8 gate verdicts — 500/500"
+   → gate failures queried from the persisted JSON:
+     quiet_hours 106 · terminal_check 57 · compliance 29 · amount_ceiling 27. PASS
 
-3. Per-cause accuracy vs ground_truth printed
-   → pnpm score:diagnosis
-   → coverage 500/500 (100%), correct 498 (99.6%), precision 99.6%
-   → per source: payment 100%, checkout 100%, receivable 100%, mandate 97.8%
-   → full 21-row table printed; only confusion is 2x
-     customer_opt_out -> mandate_revoked. PASS
+3. Terminal cases produce ZERO contact actions — asserted on DB rows
+   → pnpm plan:smoke
+   → "ZERO executable contact plans on terminal cases — 0 violation(s)"
+   → terminal-case plan action types in Neon: stop 57 (nothing else)
+   → "every terminal case is closed as stopped — 57/57"
+   → chain.test.ts asserts the property for all four terminal causes, including
+     when all seven other gates PASS, and when an earlier gate would have merely
+     downgraded. PASS
 
-4. Unknown rate and LLM parse-failure rate printed
-   → unknown 0 (0.0%); parse-failure rate 0.0%; exceptions created 0. PASS
+4. Every gate blocks on empty/null/undefined/NaN
+   → pnpm vitest run packages/core/src/guardrails
+   → 44 dedicated hostile-input assertions across all 8 gates, plus malformed
+     policy thresholds. 107 tests passed.
+   → pnpm plan:smoke → a real case with missing data: "BLOCKED, not allowed",
+     "the block is marked as fail-closed", "still records all 8 verdicts". PASS
 
-5. Injection test blocks correctly
-   → pnpm injection:smoke  (10 checks, all PASS)
-   → ZERO LLM calls for the injection case (before=0 after=0)
-   → persisted root_cause = 'unknown', status = 'exception'
-   → exceptions ROW in Neon reads "injection_suspected: gate 0 blocked this case
-     (score 1.00 >= 0.8, by heuristic, patterns: ignore-previous-instructions,
-     role-reassignment, outcome-steering, money-action-steering)"
-   → the case was NOT marked recovered as the payload demanded
-   → benign control DID reach the LLM (before=0 after=2) — the gate
-     discriminates rather than refusing everything. PASS
+5. Same input produces the same plan twice
+   → pnpm plan:smoke
+   → "the same input produces an identical plan twice — delayed_retry @
+     2026-03-01T05:30:00.000Z"  (a 20 Feb failure scheduled into the salary window)
+   → "the guardrail chain is deterministic and re-entrant — allow twice". PASS
 
-6. Downtime window matching verified with a live-shaped payload
-   → pnpm downtime:smoke  (16 checks, all PASS)
-   → signed payment.downtime.started -> 200 -> downtime_windows ROW in Neon
-     (issuer=hdfc, method=card, unresolved, severity=high)
-   → INSIDE window: persisted root_cause=issuer_down,
-     cause_by='downtime_signal', confidence 1.0 — even though the error tuple
-     said insufficient_funds
-   → OUTSIDE window: persisted insufficient_funds, cause_by='rule' — the
-     inference path is intact and independent
-   → unit tests cover inside/outside/wrong issuer/wrong method/unresolved. PASS
+6. Downtime-aware scheduling verified against a real downtime_windows row
+   → pnpm plan:smoke inserts a real row, reads it back, and plans against it
+   → RESOLVED: "scheduled relative to the REAL resolved_at, not a static +2h",
+     basis downtime_resolved
+   → OPEN: "an OPEN outage yields a re-check, not a money action"
+     (recheckOnly=true, basis downtime_recheck, cost 0, contacts nobody). PASS
 
-7. Re-run hits the cache and makes zero new LLM calls
-   → pnpm downtime:smoke → "re-running the same tail call made ZERO new API
-     calls — before=1 after=1"
-   → pnpm explain → second view: cached=true newApiCalls=0, identical text. PASS
-
-8. pnpm typecheck clean, pnpm test green
+7. pnpm typecheck clean, lint clean, pnpm test green
    → typecheck exit 0 across all 6 projects
-   → test exit 0 — 12 files, 338 tests
-   → pnpm lint exit 0. PASS
+   → lint exit 0
+   → test exit 0 — 16 files, 523 tests. PASS
 
-9. Push succeeded, reflow deploy still green
-   → git push origin main → 45bc0e8..525e479, exit 0
+8. Push succeeded, deploy still green
    → see Git state. PASS
 ```
 
@@ -320,13 +298,10 @@ Pushed:  y
 History: never rewritten, never force-pushed
 
 Commits this run:
-  2312102  feat(diagnose): closed taxonomy, rule table, downtime windows, llm_cache
-  81bf916  feat(llm): groq provider, injection gate, zod-validated tail, scoring harness
-  75e6b54  fix(guard): call Prompt Guard as a text classifier, add downtime smoke test
-  525e479  feat(diagnose): lazy explanations, injection smoke test, ADRs and docs
-  (+ this docs commit)
-
-reflow Vercel deploy for 525e479: SUCCESS
+  (see git log 40032f4..HEAD)
+  feat(policy): intervention map, timing strategies, fail-closed guardrail chain
+  feat(plan): worker plan stage, gate summary CLI, row-level smoke test
+  docs: Run 4 phase report, five ADRs
 
 .env.local ignored and never committed: verified — git check-ignore -v .env.local
 ```
@@ -335,7 +310,7 @@ reflow Vercel deploy for 525e479: SUCCESS
 
 ## Human action needed
 
-**None.** The webhook is registered and verified. Nothing is blocked.
+**None.** Nothing is blocked.
 
 Optional, cosmetic: remove the deleted `razorpay` project's GitHub integration so
 commits stop showing a red check.
@@ -358,47 +333,46 @@ password  reflow-demo-2026
 
 ## Next phase
 
-**RUN 4 — Policy + guardrails.** Cause → intervention mapping from
-POLICY_SPEC §3, the static timing strategy from §4, and the eight-gate chain
-from §5 with ordering as a tested property.
+**RUN 5 — Scheduler + execution + outcomes.** pg-boss on the existing Postgres,
+catch-up on boot, re-gating at execution, the action row written BEFORE the external
+call, `lag_seconds`, outcome attribution inside the 72h window, and bandit arm
+updates.
 
-Everything Run 4 needs is in place: every case has a `root_cause` from the closed
-taxonomy, `GATE_TERMINAL_CAUSES` (4 values, including `mandate_revoked`) is
-exported from core, and `policy.yaml` is loaded and validated.
+Everything Run 5 needs is in place:
 
-**Note for gate 5:** terminal causes are already identifiable via
-`isTerminalCause()`. The rule table checks them FIRST, and gate 5 must do the same
-— POLICY_SPEC calls that ordering load-bearing, and it needs its own test.
+- **402 pending plans** with `scheduled_for` set and every gate verdict recorded.
+- **`runGuardrails` is re-entrant** — call it again immediately before execution.
+  A plan that no longer passes gets `actions.status = 'skipped_on_regate'`, and
+  `chain.decidedBy` names the gate that stopped it.
+- **`scaleDelayMs`** is the only place `DEMO_TIME_SCALE` is applied. The scheduler
+  must use `scheduleAfter`, not its own arithmetic.
+- **`banditBucketKey(issuer, method, rootCause)`** and `armToHours` are exported;
+  an outcome updates `alpha` on success and `beta` on failure.
+- **Two gates are unproven against real data** — `contact_cap` and
+  `cooling_window` both read `actions`, which is empty. Re-verify them once
+  actions exist; that is the highest-value check in Run 5.
 
 ---
 
 ## Running notes for future sessions
 
-- **The taxonomy is CLOSED — 21 causes.** `packages/core/src/diagnose/taxonomy.ts`
-  is the only source. Never widen it to accommodate a label from elsewhere; fix
-  the other end (ADR-026).
-- **Never tune the rule table against `ground_truth`.** It was written from
-  POLICY_SPEC and Razorpay semantics, then scored. Fitting it to the oracle would
-  make every Run 7 diagnosis number circular.
-- **`packages/core` stays pure**, enforced by ESLint. `node:crypto` is fine —
-  deterministic, no I/O. The LLM arrives as an injected port. Only `env/load.ts`
-  and `policy/load.ts` are exempt.
-- **Prompt Guard takes ONE user message, no system prompt, no fence.** Anything
-  added becomes part of what is classified.
-- **Gate 0 fails CLOSED on a heuristic hit and only fails open when the model is
-  unreachable AND heuristics found nothing** — marked `degraded: true`.
-- **Give reasoning models room.** `gpt-oss-*` spend tokens on reasoning before
-  content; a tight `max_tokens` yields empty content.
-- **The LLM may never choose an action.** The Zod schema is `.strict()`, so an
-  `action` key is a rejected response. That is deliberate.
+- **`packages/core` stays pure**, enforced by ESLint. `now` is a parameter; the RNG
+  is injected. Only `env/load.ts` and `policy/load.ts` are exempt.
+- **Never compute a delay at a call site.** `scaleDelayMs` / `scheduleAfter` only.
+- **Every gate fails closed.** If you add a gate, add its hostile-input test in the
+  same commit. `Number('')` is `0` — that is how Run 3's security bug happened.
+- **`stop_case` wins absolutely.** Do not make the chain short-circuit; the full
+  eight-verdict record is required, and severity resolution is what protects the
+  terminal invariant.
+- **The LLM may never choose an action.** The policy engine decides; the diagnosis
+  Zod schema is `.strict()` so an `action` key is a rejected response.
+- **The taxonomy is CLOSED — 21 causes.** `buildPlan` refuses anything outside it.
+- **Costs come from policy.yaml.** A malformed cost falls back to the EXPENSIVE
+  figure, never 0.
+- **All money is integer paise.** Gate 6 rejects a non-integer amount outright.
+- **Assert against rows that reached Postgres.** Runs 2 and 3 each shipped a bug
+  that passed every unit test.
 - **`pnpm eval:seed` deletes synthetic cases first**, scoped to
-  `is_synthetic = true`. Never widen that filter.
-- **The generator's draw ORDER is part of the dataset.** Adding a draw
-  mid-sequence invalidates every stored fingerprint. Current: `ea588ebc96433e73`.
-- **Assert against rows that reached Postgres.** Three of the four bugs this run
-  were invisible to unit tests.
-- **An unresolved downtime window matches every later failure forever.** Check
-  `findStaleOpenWindows` before trusting a downtime attribution.
-- **All money is integer paise.** A fractional amount is refused, never rounded.
+  `is_synthetic = true`. Never widen that filter. Fingerprint: `ea588ebc96433e73`.
 - **TypeScript is pinned to 6.0.3.** 7.x breaks `typescript-eslint` and the fence.
 - **Never claim a criterion passed without running it.**
