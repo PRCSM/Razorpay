@@ -2,6 +2,11 @@
 
 Three environments: **local**, **Vercel** (web), **Railway** (worker).
 
+> **Deployment facts, current as of Run 2.**
+> Vercel project **`reflow`** · production `https://reflow-puce.vercel.app` ·
+> deploy is **green**. Every variable in the Vercel column below is set except
+> `GROQ_API_KEY`, which is worker-only by design and must stay unset there.
+
 Never commit a value. `.env.example` carries keys only. `.env.local` is gitignored.
 
 **`.env.local` ships pre-filled.** Two fields are blank and the human generates them before Run 1: `RAZORPAY_WEBHOOK_SECRET` and `AUTH_SECRET`. Claude Code reads `.env.local` from disk — it never needs a value pasted into a chat, and should never echo one into a log, a commit, a doc, or a phase report.
@@ -61,7 +66,27 @@ openssl rand -base64 32
 ```
 
 ### `AUTH_URL`
-`http://localhost:3000` local, `https://<project>.vercel.app` production.
+`http://localhost:3000` local, the deployment URL in production.
+
+**Production value:** `https://reflow-puce.vercel.app`
+
+The Vercel project is **`reflow`**. An earlier project named `razorpay` was
+misconfigured, is deleted, and is the reason Run 1's deployments failed — the
+repository was fine. Any doc or note referring to a `razorpay` Vercel project or
+to `razorpay-theta-ten.vercel.app` is stale.
+
+### `RAZORPAY_WEBHOOK_SECRET` — do not regenerate
+
+The value was generated during Run 1 and now exists in **both** `.env.local` and
+Vercel. Razorpay signs every delivery with it, so replacing it invalidates every
+signature check. Read the existing value when registering the webhook; never
+create a new one.
+
+Webhook target (permanent, no tunnel required):
+
+```
+https://reflow-puce.vercel.app/api/webhooks/razorpay
+```
 
 ### `DEMO_TIME_SCALE`
 Integer divisor for all scheduling delays.
