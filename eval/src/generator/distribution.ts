@@ -35,27 +35,46 @@ export const PAYMENT_CAUSE_MIX: readonly Weighted<string>[] = [
   { value: 'merchant_config_error', weight: 4 },
 ];
 
-/** Non-terminal mandate causes. */
+/**
+ * Non-terminal mandate causes, from the POLICY_SPEC taxonomy (4 total;
+ * `mandate_revoked` arrives via terminal injection).
+ *
+ * Corrected in Run 3. Run 2 emitted `mandate_pre_debit_missing`, `mandate_paused`,
+ * and bare `insufficient_funds` here — none of which are legal mandate causes.
+ * See ADR-026.
+ */
 export const MANDATE_CAUSE_MIX: readonly Weighted<string>[] = [
-  { value: 'insufficient_funds', weight: 46 },
-  { value: 'mandate_pre_debit_missing', weight: 24 },
-  { value: 'issuer_down', weight: 18 },
-  { value: 'mandate_paused', weight: 12 },
+  { value: 'mandate_insufficient_balance', weight: 48 },
+  { value: 'mandate_debit_failed', weight: 32 },
+  { value: 'mandate_expired', weight: 20 },
 ];
 
-/** Non-terminal checkout causes. Behavioural, not provider errors. */
+/** Non-terminal checkout causes. Behavioural — the stage the customer left at. */
 export const CHECKOUT_CAUSE_MIX: readonly Weighted<string>[] = [
-  { value: 'checkout_abandoned_price', weight: 34 },
-  { value: 'checkout_abandoned_friction', weight: 33 },
-  { value: 'checkout_abandoned_distraction', weight: 33 },
+  { value: 'abandoned_at_method', weight: 40 },
+  { value: 'abandoned_at_auth', weight: 34 },
+  { value: 'price_hesitation', weight: 26 },
 ];
 
-/** Non-terminal receivable causes. */
+/**
+ * Non-terminal receivable causes.
+ *
+ * `overdue_soft` (<15 days) and `overdue_hard` (≥15 days) are the same provider
+ * signal split by a day count, so the generator draws a `daysOverdue` and the
+ * cause follows from it rather than being chosen directly. Only `disputed_invoice`
+ * is an independent draw.
+ */
 export const RECEIVABLE_CAUSE_MIX: readonly Weighted<string>[] = [
-  { value: 'invoice_overdue', weight: 52 },
-  { value: 'invoice_disputed', weight: 26 },
-  { value: 'invoice_awaiting_po', weight: 22 },
+  { value: 'overdue_soft', weight: 44 },
+  { value: 'overdue_hard', weight: 34 },
+  { value: 'disputed_invoice', weight: 22 },
 ];
+
+/** Days-overdue ranges that produce each overdue cause. Threshold is 15 days. */
+export const OVERDUE_SOFT_DAYS: readonly [number, number] = [1, 14];
+export const OVERDUE_HARD_DAYS: readonly [number, number] = [15, 95];
+/** A disputed invoice still has an age; it just is not what drives the cause. */
+export const DISPUTED_DAYS: readonly [number, number] = [2, 60];
 
 /**
  * Terminal causes, from policy.yaml `gates.terminal_check.causes`.
@@ -179,17 +198,24 @@ export const CAUSE_ERROR_SIGNATURES: Readonly<Record<string, ErrorSignature>> = 
     errorStep: 'payment_initiation',
     errorReason: 'merchant_config_invalid',
   },
-  mandate_pre_debit_missing: {
+  // ---- mandates. All on the emandate rail. --------------------------------
+  mandate_insufficient_balance: {
     errorCode: 'BAD_REQUEST_ERROR',
-    errorSource: 'business',
-    errorStep: 'payment_initiation',
-    errorReason: 'pre_debit_notification_missing',
+    errorSource: 'bank',
+    errorStep: 'payment_authorization',
+    errorReason: 'insufficient_funds',
   },
-  mandate_paused: {
+  mandate_debit_failed: {
+    errorCode: 'BAD_REQUEST_ERROR',
+    errorSource: 'issuer',
+    errorStep: 'payment_authorization',
+    errorReason: 'debit_attempt_failed',
+  },
+  mandate_expired: {
     errorCode: 'BAD_REQUEST_ERROR',
     errorSource: 'customer',
-    errorStep: 'payment_authorization',
-    errorReason: 'subscription_paused',
+    errorStep: 'payment_initiation',
+    errorReason: 'mandate_expired',
   },
   mandate_revoked: {
     errorCode: 'BAD_REQUEST_ERROR',
@@ -215,23 +241,45 @@ export const CAUSE_ERROR_SIGNATURES: Readonly<Record<string, ErrorSignature>> = 
     errorStep: 'payment_authorization',
     errorReason: 'customer_opted_out',
   },
-  invoice_overdue: {
+  // ---- checkout. Our own simulated event, carrying the stage reached. ------
+  abandoned_at_method: {
+    errorCode: 'CHECKOUT_ABANDONED',
+    errorSource: 'customer',
+    errorStep: 'checkout_method_selection',
+    errorReason: 'left_before_choosing_method',
+  },
+  abandoned_at_auth: {
+    errorCode: 'CHECKOUT_ABANDONED',
+    errorSource: 'customer',
+    errorStep: 'checkout_authentication',
+    errorReason: 'left_at_bank_authentication',
+  },
+  price_hesitation: {
+    errorCode: 'CHECKOUT_ABANDONED',
+    errorSource: 'customer',
+    errorStep: 'checkout_review',
+    errorReason: 'left_at_order_review',
+  },
+
+  // ---- receivables. `error_source` separates a dispute from mere age; the
+  // day count in error_reason splits soft from hard. See ADR-028.
+  overdue_soft: {
     errorCode: 'INVOICE_EXPIRED',
     errorSource: 'business',
     errorStep: 'invoice_settlement',
     errorReason: 'invoice_past_due_date',
   },
-  invoice_disputed: {
+  overdue_hard: {
+    errorCode: 'INVOICE_EXPIRED',
+    errorSource: 'business',
+    errorStep: 'invoice_settlement',
+    errorReason: 'invoice_past_due_date',
+  },
+  disputed_invoice: {
     errorCode: 'INVOICE_EXPIRED',
     errorSource: 'customer',
     errorStep: 'invoice_settlement',
     errorReason: 'invoice_disputed_by_customer',
-  },
-  invoice_awaiting_po: {
-    errorCode: 'INVOICE_EXPIRED',
-    errorSource: 'customer',
-    errorStep: 'invoice_settlement',
-    errorReason: 'awaiting_purchase_order',
   },
 };
 
@@ -298,45 +346,61 @@ export const CAUSE_GROUND_TRUTH: Readonly<Record<string, CauseGroundTruth>> = {
     respondsTo: ['escalate_human', 'immediate_retry'],
     bestWindowHours: [1, 2],
   },
-  mandate_pre_debit_missing: {
-    wouldPayEventually: 0.6,
+  // ---- mandates. POLICY_SPEC §3 requires a pre-debit notice before any
+  // re-presentment, so `pre_debit_notice` leads for every recoverable mandate.
+  mandate_insufficient_balance: {
+    wouldPayEventually: 0.68,
     respondsTo: ['pre_debit_notice', 'delayed_retry'],
-    bestWindowHours: [24, 48],
-  },
-  mandate_paused: {
-    wouldPayEventually: 0.3,
-    respondsTo: ['nudge', 'payment_link'],
-    bestWindowHours: [12, 36],
-  },
-  checkout_abandoned_price: {
-    wouldPayEventually: 0.22,
-    respondsTo: ['nudge', 'payment_link'],
-    bestWindowHours: [1, 6],
-  },
-  checkout_abandoned_friction: {
-    wouldPayEventually: 0.3,
-    respondsTo: ['payment_link', 'nudge', 'method_switch'],
-    bestWindowHours: [1, 4],
-  },
-  checkout_abandoned_distraction: {
-    wouldPayEventually: 0.45,
-    respondsTo: ['nudge', 'payment_link'],
-    bestWindowHours: [1, 8],
-  },
-  invoice_overdue: {
-    wouldPayEventually: 0.66,
-    respondsTo: ['promise_to_pay', 'nudge', 'payment_link'],
     bestWindowHours: [24, 72],
   },
-  invoice_disputed: {
+  mandate_debit_failed: {
+    wouldPayEventually: 0.74,
+    respondsTo: ['pre_debit_notice', 'delayed_retry', 'immediate_retry'],
+    bestWindowHours: [24, 48],
+  },
+  // Needs re-authorisation, which only the customer can give. One ask, then stop.
+  mandate_expired: {
+    wouldPayEventually: 0.26,
+    respondsTo: ['nudge', 'payment_link'],
+    bestWindowHours: [12, 48],
+  },
+
+  // ---- checkout. Deeper in the funnel means warmer intent.
+  abandoned_at_method: {
+    wouldPayEventually: 0.3,
+    respondsTo: ['payment_link', 'nudge'],
+    bestWindowHours: [1, 4],
+  },
+  // Furthest progressed: they were at the bank screen. Most recoverable.
+  abandoned_at_auth: {
+    wouldPayEventually: 0.44,
+    respondsTo: ['payment_link', 'nudge', 'method_switch'],
+    bestWindowHours: [1, 3],
+  },
+  // POLICY_SPEC says stop — pricing is not a recovery problem. Nothing we send
+  // changes the price, so the responds_to list is deliberately thin.
+  price_hesitation: {
+    wouldPayEventually: 0.18,
+    respondsTo: ['nudge'],
+    bestWindowHours: [4, 12],
+  },
+
+  // ---- receivables.
+  overdue_soft: {
+    wouldPayEventually: 0.7,
+    respondsTo: ['nudge', 'payment_link', 'promise_to_pay'],
+    bestWindowHours: [24, 72],
+  },
+  // Older debt is harder debt.
+  overdue_hard: {
+    wouldPayEventually: 0.44,
+    respondsTo: ['promise_to_pay', 'escalate_human'],
+    bestWindowHours: [48, 120],
+  },
+  disputed_invoice: {
     wouldPayEventually: 0.28,
     respondsTo: ['escalate_human', 'promise_to_pay'],
     bestWindowHours: [24, 96],
-  },
-  invoice_awaiting_po: {
-    wouldPayEventually: 0.58,
-    respondsTo: ['promise_to_pay', 'nudge'],
-    bestWindowHours: [48, 120],
   },
 };
 

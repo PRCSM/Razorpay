@@ -58,7 +58,7 @@ async function main(): Promise<void> {
       const label = (DOMAIN_TABLE_NAMES as readonly string[]).includes(name)
         ? 'domain'
         : (TABLE_NAMES as readonly string[]).includes(name)
-          ? 'auth'
+          ? 'supporting'
           : 'other';
       console.log(`  - ${name}  [${label}]`);
     }

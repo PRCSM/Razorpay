@@ -39,8 +39,16 @@ export type CaseStatus = (typeof CASE_STATUSES)[number];
 export const TERMINAL_CASE_STATUSES = ['recovered', 'stopped', 'exception'] as const;
 export type TerminalCaseStatus = (typeof TERMINAL_CASE_STATUSES)[number];
 
-/** Did a rule or the LLM decide the root cause. Makes the LLM's role auditable. */
-export const CAUSE_SOURCES = ['rule', 'llm'] as const;
+/**
+ * What decided the root cause. Makes the LLM's role auditable.
+ *
+ * `downtime_signal` was added in Run 3: Razorpay reports issuer downtime directly
+ * via `payment.downtime.*`, so a failure inside a confirmed outage window is an
+ * OBSERVED fact rather than an inference from an error code. Keeping it distinct
+ * from `rule` means RESULTS.md can show how much of `issuer_down` was measured
+ * versus deduced. See ADR-029.
+ */
+export const CAUSE_SOURCES = ['rule', 'llm', 'downtime_signal'] as const;
 export type CauseSource = (typeof CAUSE_SOURCES)[number];
 
 /**

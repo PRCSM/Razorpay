@@ -8,6 +8,13 @@
       "when": 1788379039482,
       "tag": "0000_nifty_arclight",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788451741192,
+      "tag": "0001_dry_malice",
+      "breakpoints": true
     }
   ]
 }

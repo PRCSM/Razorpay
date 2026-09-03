@@ -20,3 +20,4 @@ export * from './env/index';
 export * from './policy/index';
 export * from './webhook/index';
 export * from './normalize/index';
+export * from './diagnose/index';

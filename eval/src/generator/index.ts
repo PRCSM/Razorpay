@@ -22,8 +22,11 @@ import {
   CAUSE_GROUND_TRUTH,
   CAUSE_METHOD_MIX,
   CHECKOUT_CAUSE_MIX,
+  DISPUTED_DAYS,
   ISSUERS,
   MANDATE_CAUSE_MIX,
+  OVERDUE_HARD_DAYS,
+  OVERDUE_SOFT_DAYS,
   PAYMENT_CAUSE_MIX,
   RECEIVABLE_CAUSE_MIX,
   SALARY_SQUEEZE_CONCENTRATION,
@@ -63,6 +66,8 @@ export interface SyntheticCase {
   readonly openedAt: Date;
   /** Convenience flag; the authoritative label is `groundTruth.true_root_cause`. */
   readonly isTerminal: boolean;
+  /** Receivables only. Also encoded into `errorReason` for the rule engine. */
+  readonly daysOverdue: number | null;
   readonly groundTruth: GroundTruth;
 }
 
@@ -190,7 +195,23 @@ interface CaseSkeleton {
   readonly amountPaise: number;
   readonly customerRef: string;
   readonly groundTruth: GroundTruth;
+  /** Receivables only. Drives overdue_soft vs overdue_hard. */
+  readonly daysOverdue: number | null;
   openedAt: Date | null;
+}
+
+/**
+ * Days past due for a receivable, consistent with its drawn cause.
+ *
+ * The generator picks the cause and then produces data consistent with it —
+ * exactly as it does for payments via the error signatures. The rule engine reads
+ * only the data (the day count), never the label, so recovering the cause from it
+ * is a genuine derivation rather than a circular one.
+ */
+function daysOverdueFor(cause: string, rng: Rng): number {
+  if (cause === 'overdue_hard') return rng.int(OVERDUE_HARD_DAYS[0], OVERDUE_HARD_DAYS[1]);
+  if (cause === 'disputed_invoice') return rng.int(DISPUTED_DAYS[0], DISPUTED_DAYS[1]);
+  return rng.int(OVERDUE_SOFT_DAYS[0], OVERDUE_SOFT_DAYS[1]);
 }
 
 export function generateCases(options: GenerateOptions): readonly SyntheticCase[] {
@@ -238,6 +259,7 @@ export function generateCases(options: GenerateOptions): readonly SyntheticCase[
 
     const customerRef = rng.pick(customerPool);
     const groundTruth = groundTruthFor(cause, isTerminal, rng);
+    const daysOverdue = source === 'receivable' ? daysOverdueFor(cause, rng) : null;
 
     skeletons.push({
       source,
@@ -248,6 +270,7 @@ export function generateCases(options: GenerateOptions): readonly SyntheticCase[
       amountPaise,
       customerRef,
       groundTruth,
+      daysOverdue,
       openedAt: null,
     });
   }
@@ -322,8 +345,17 @@ export function generateCases(options: GenerateOptions): readonly SyntheticCase[
     const signature = CAUSE_ERROR_SIGNATURES[skeleton.cause];
     const openedAt = skeleton.openedAt ?? windowEnd;
 
-    // Checkout abandonment has no provider error — nobody rejected anything.
-    const isCheckout = skeleton.source === 'checkout';
+    /**
+     * Receivables carry the day count inside `error_reason`, as
+     * `invoice_past_due_date:23`. Both lanes use the same field the same way —
+     * the live normalizer computes it from the invoice — because
+     * `recovery_cases` has no dedicated column and a light-depth surface did not
+     * justify a migration. See ADR-028.
+     */
+    const errorReason =
+      skeleton.daysOverdue !== null && signature?.errorReason === 'invoice_past_due_date'
+        ? `invoice_past_due_date:${skeleton.daysOverdue}`
+        : (signature?.errorReason ?? null);
 
     return {
       source: skeleton.source,
@@ -333,12 +365,13 @@ export function generateCases(options: GenerateOptions): readonly SyntheticCase[
       customerRef: skeleton.customerRef,
       method: skeleton.method,
       issuer: skeleton.issuer,
-      errorCode: isCheckout ? null : (signature?.errorCode ?? null),
-      errorSource: isCheckout ? null : (signature?.errorSource ?? null),
-      errorStep: isCheckout ? null : (signature?.errorStep ?? null),
-      errorReason: isCheckout ? skeleton.cause : (signature?.errorReason ?? null),
+      errorCode: signature?.errorCode ?? null,
+      errorSource: signature?.errorSource ?? null,
+      errorStep: signature?.errorStep ?? null,
+      errorReason,
       openedAt,
       isTerminal: skeleton.isTerminal,
+      daysOverdue: skeleton.daysOverdue,
       groundTruth: skeleton.groundTruth,
     } satisfies SyntheticCase;
   });

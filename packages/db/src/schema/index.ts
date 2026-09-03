@@ -20,5 +20,7 @@ export * from './audit-log';
 export * from './exceptions';
 export * from './bandit-arms';
 export * from './users';
+export * from './downtime-windows';
+export * from './llm-cache';
 
 export * from './relations';

@@ -403,3 +403,12 @@ export function normalizeEvent(args: {
 }
 
 export { readObject, readString, readNonNegativeInteger, readPath, readProp } from './read';
+
+export {
+  DOWNTIME_EVENT_TYPES,
+  isDowntimeEvent,
+  normalizeDowntimeEvent,
+  type DowntimeDraft,
+  type DowntimeEventType,
+  type DowntimeNormalizeResult,
+} from './downtime';

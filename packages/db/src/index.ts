@@ -14,4 +14,11 @@ export {
   type Schema,
   type ServerlessDb,
 } from './client';
-export { TABLE_NAMES, DOMAIN_TABLE_NAMES } from './table-names';
+export {
+  TABLE_NAMES,
+  DOMAIN_TABLE_NAMES,
+  SUPPORTING_TABLE_NAMES,
+  type DomainTableName,
+  type SupportingTableName,
+  type TableName,
+} from './table-names';
