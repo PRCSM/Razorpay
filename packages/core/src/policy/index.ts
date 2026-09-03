@@ -29,3 +29,22 @@ export {
 } from './schema';
 
 export { loadPolicy, parsePolicyYaml, PolicyLoadError } from './load';
+
+export {
+  INTERVENTIONS,
+  estimateCostPaise,
+  interventionForAttempt,
+  isContactAction,
+  type CostBasis,
+  type Intervention,
+  type InterventionPlan,
+} from './interventions';
+
+export {
+  buildPlan,
+  expectedValuePaise,
+  type PlanDraft,
+  type PlanningCase,
+  type PlanningContext,
+  type PlanOutcome,
+} from './engine';

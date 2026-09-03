@@ -122,4 +122,9 @@ export const TERMINAL_ROOT_CAUSES = [
 export type TerminalRootCause = (typeof TERMINAL_ROOT_CAUSES)[number];
 
 export const TIMING_STRATEGIES = ['static', 'bandit'] as const;
-export type TimingStrategy = (typeof TIMING_STRATEGIES)[number];
+/**
+ * The NAME of a timing strategy, as it appears in `TIMING_STRATEGY` and
+ * policy.yaml. Distinct from the `TimingStrategy` interface in `../timing` —
+ * renamed in Run 4 so the two no longer collide in the package barrel.
+ */
+export type TimingStrategyName = (typeof TIMING_STRATEGIES)[number];

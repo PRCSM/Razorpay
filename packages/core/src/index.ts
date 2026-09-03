@@ -21,3 +21,5 @@ export * from './policy/index';
 export * from './webhook/index';
 export * from './normalize/index';
 export * from './diagnose/index';
+export * from './timing/index';
+export * from './guardrails/index';
