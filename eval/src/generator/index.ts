@@ -331,7 +331,16 @@ export function generateCases(options: GenerateOptions): readonly SyntheticCase[
       continue;
     }
     const day: IstDateParts = rng.pick(pool);
-    skeleton.openedAt = utcFromIst(day.year, day.month, day.day, rng.int(0, 23), rng.int(0, 59));
+    const placed = utcFromIst(day.year, day.month, day.day, rng.int(0, 23), rng.int(0, 59));
+
+    // Clamp into the window. A day at either edge plus a random time of day can
+    // land outside it — the first and last IST days are only partly inside a UTC
+    // window, and an unclamped timestamp would put cases in the future.
+    const clamped = Math.min(
+      windowEnd.getTime(),
+      Math.max(windowStart.getTime(), placed.getTime()),
+    );
+    skeleton.openedAt = new Date(clamped);
   }
 
   // ---- phase 2c: everything else, uniform ---------------------------------

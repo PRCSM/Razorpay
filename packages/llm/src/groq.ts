@@ -109,7 +109,12 @@ export class GroqClient {
    */
   async complete(args: {
     readonly slot: ModelSlot;
-    readonly system: string;
+    /**
+     * Omit for a text-classification model. Llama Prompt Guard rejects a system
+     * message outright — "messages must contains a single user message for text
+     * classification models" — so the guard slot sends only the text to classify.
+     */
+    readonly system?: string;
     readonly user: string;
     readonly temperature?: number;
     readonly maxTokens?: number;
@@ -118,7 +123,7 @@ export class GroqClient {
     // Temperature is part of the key: the same prompt at a different temperature
     // is a different request and must not reuse the cached answer.
     const temperature = args.temperature ?? 0;
-    const promptForKey = `t=${temperature}\n<<SYSTEM>>\n${args.system}\n<<USER>>\n${args.user}`;
+    const promptForKey = `t=${temperature}\n<<SYSTEM>>\n${args.system ?? ''}\n<<USER>>\n${args.user}`;
     const key = cacheKeyFor(model, promptForKey);
 
     const hit = await this.cache.get(key);
@@ -157,10 +162,13 @@ export class GroqClient {
             model,
             temperature,
             max_tokens: args.maxTokens ?? 512,
-            messages: [
-              { role: 'system', content: args.system },
-              { role: 'user', content: args.user },
-            ],
+            messages:
+              args.system === undefined
+                ? [{ role: 'user', content: args.user }]
+                : [
+                    { role: 'system', content: args.system },
+                    { role: 'user', content: args.user },
+                  ],
           }),
         });
 

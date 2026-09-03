@@ -38,6 +38,7 @@ export {
 export {
   collectUntrustedText,
   heuristicInjectionScan,
+  scoreFromGuardOutput,
   screenForInjection,
   type HeuristicResult,
   type InjectionScreenOptions,

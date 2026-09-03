@@ -342,11 +342,30 @@ describe('generator — ground truth and integrity', () => {
     }
   });
 
-  it('checkout cases carry no provider error code', () => {
-    for (const c of cases.filter((x) => x.source === 'checkout')) {
-      expect(c.errorCode).toBeNull();
-      expect(c.errorSource).toBeNull();
-      expect(c.errorStep).toBeNull();
+  /**
+   * Changed in Run 3. Checkout abandonment is OUR simulated event, so we control
+   * its payload and record the stage the customer reached. That stage is what lets
+   * the rule table diagnose checkout deterministically instead of handing a
+   * light-depth surface to the LLM. It is not a Razorpay error — the code is our
+   * own `CHECKOUT_ABANDONED` marker. See ADR-027.
+   */
+  it('checkout cases carry a structured stage signal, not a provider error', () => {
+    const stages = new Set([
+      'checkout_method_selection',
+      'checkout_authentication',
+      'checkout_review',
+    ]);
+    for (const c of cases.filter((x) => x.source === 'checkout' && !x.isTerminal)) {
+      expect(c.errorCode).toBe('CHECKOUT_ABANDONED');
+      expect(c.errorSource).toBe('customer');
+      expect(stages.has(c.errorStep ?? '')).toBe(true);
+    }
+  });
+
+  it('receivables carry a day count the rule table can read', () => {
+    for (const c of cases.filter((x) => x.source === 'receivable' && !x.isTerminal)) {
+      expect(c.daysOverdue).not.toBeNull();
+      expect(Number.isSafeInteger(c.daysOverdue ?? -1)).toBe(true);
     }
   });
 
