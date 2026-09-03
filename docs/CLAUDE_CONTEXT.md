@@ -9,48 +9,42 @@ honest and keep it current.
 
 ---
 
-## Deployment facts — corrected in Run 2
-
-The Run 1 report blamed a repository defect for the failing deploy. That was
-wrong, and the correction matters:
+## Deployment facts
 
 | | Value |
 |---|---|
 | Vercel project | **`reflow`** |
 | Production URL | **https://reflow-puce.vercel.app** |
-| Deploy status | **GREEN** |
 | Webhook target | **https://reflow-puce.vercel.app/api/webhooks/razorpay** |
-| Vercel env | all set except `GROQ_API_KEY` (worker-only by design) |
+| Webhook status | **REGISTERED and enabled** in Razorpay test mode |
+| Vercel env | all set except `GROQ_API_KEY` — worker-only, never add it |
 
-An earlier Vercel project named `razorpay` was misconfigured. It is deleted, and
-it is the sole reason Run 1's deployments failed — the repo built fine all along.
-
-**One loose end:** the dead `razorpay` project's GitHub integration still posts a
-commit status, so `gh api .../status` reports an aggregate `failure` even though
-`reflow` reports `success`. Two checks appear per commit. Harmless, but it makes
-the commit look red. See **Human action needed**.
-
-Anything referring to `razorpay-theta-ten.vercel.app` or a `razorpay` Vercel
-project is stale.
+The old `razorpay` Vercel project is deleted. Anything referring to it or to
+`razorpay-theta-ten.vercel.app` is stale.
 
 ---
 
 ## Current phase
 
-`RUN 2 — Ingest · ✅ done`
+`RUN 3 — Diagnosis · ✅ done`
 
-Next: **RUN 3 — Diagnosis** (`CLAUDE_CODE_PROMPTS.md`)
+Next: **RUN 4 — Policy + guardrails** (`CLAUDE_CODE_PROMPTS.md`)
 
 ---
 
 ## Completed
 
 **Run 1 — Foundation.** Git secured, pnpm monorepo, nine-table schema on Neon,
-env and policy validation, auth with a seeded user, CI, local Postgres.
+env and policy validation, auth, CI.
 
 **Run 2 — Ingest.** Signed webhook receiver, pure four-source normalizer,
-transactional ingest worker, and a seeded synthetic generator producing 500
-labelled cases in Neon. All eight completion criteria verified by running them.
+transactional ingest, seeded synthetic generator.
+
+**Run 3 — Diagnosis.** Closed 21-cause taxonomy, deterministic rule table at
+100% coverage and 99.6% accuracy, Razorpay downtime signal as a first-class
+diagnosis path, Groq provider with a persisted cache, Prompt Guard gate 0, a
+Zod-validated LLM tail, and lazy per-case explanations. All nine criteria verified
+by running them.
 
 ---
 
@@ -60,253 +54,260 @@ labelled cases in Neon. All eight completion criteria verified by running them.
 |---|---|---|
 | 1 | Foundation — gitignore, monorepo, schema, auth | ✅ Done |
 | 2 | Ingest — webhooks, normalization, synthetic generator | ✅ Done |
-| 3 | Diagnosis — rule engine, LLM tail, injection gate | ⬜ Not started |
+| 3 | Diagnosis — rule engine, LLM tail, injection gate | ✅ Done |
 | 4 | Policy + guardrails | ⬜ Not started |
 | 5 | Scheduler + execution + outcomes | ⬜ Not started |
 | 6 | Dashboard | ⬜ Not started |
 | 7 | Eval harness + landing page | ⬜ Not started |
 | 8 | Deploy + audit + test prep | ⬜ Not started |
 
-⬜ not started · 🟡 in progress · ✅ done · ⚠️ done with known gaps · 🛑 halted
+---
+
+## THE HEADLINE NUMBERS
+
+```
+Diagnosis split, 500 synthetic cases          Rule table vs ground truth
+------------------------------------          ---------------------------
+by rule            500   100.0%               coverage        500  100.0%
+by downtime_signal   0     0.0%  (see below)  correct         498   99.6%
+by LLM               0     0.0%               precision              99.6%
+unknown              0     0.0%
+parse-failure rate         0.0%
+```
+
+`downtime_signal` is 0% on the synthetic lane **by design** — the generator emits
+no downtime events. That path is verified separately, end to end, against live
+Razorpay-shaped payloads and persisted rows (`pnpm downtime:smoke`).
+
+The LLM answering 0% is the intended shape, not a gap: POLICY_SPEC §6 says the
+rule engine decides and the LLM handles the tail. The tail is proven working on an
+unmapped tuple by `pnpm downtime:smoke` and `pnpm injection:smoke`.
+
+### Per-cause accuracy
+
+All 21 causes at 100% recall and 100% precision except:
+
+| cause | truth | predicted | correct | recall | precision |
+|---|---|---|---|---|---|
+| `customer_opt_out` | 16 | 14 | 14 | 87.5% | 100.0% |
+| `mandate_revoked` | 3 | 5 | 3 | 100.0% | 60.0% |
+
+**The only confusion in the dataset:** 2 cases of
+`customer_opt_out → mandate_revoked`. On a mandate rail these are genuinely
+indistinguishable from the error fields — both present as
+`(BAD_REQUEST_ERROR, customer, payment_authorization, emandate)`. **Both are
+terminal**, so gate 5 stops the case either way and the money outcome is
+identical. Not worth contriving a discriminator for; reported instead.
 
 ---
 
 ## Files changed this run
 
-**New — `packages/core` (pure)**
-`src/webhook/signature.ts` · `src/webhook/envelope.ts` · `src/webhook/events.ts` ·
-`src/webhook/index.ts` · `src/webhook/signature.test.ts` ·
-`src/webhook/envelope.test.ts` · `src/normalize/index.ts` · `src/normalize/read.ts` ·
-`src/normalize/normalize.test.ts`
+**New — `packages/core/src/diagnose/`** (all pure)
+`taxonomy.ts` · `rules.ts` · `downtime.ts` · `port.ts` · `index.ts` ·
+`rules.test.ts` · `downtime.test.ts` · `diagnose.test.ts`
 
-**New — `apps/web`**
-`src/app/api/webhooks/razorpay/route.ts`
+**New — `packages/core/src/normalize/`**
+`downtime.ts` (the `payment.downtime.*` normalizer)
 
-**New — `apps/worker`**
-`src/ingest/index.ts` · `src/scripts/webhook-smoke.ts`
+**New — `packages/llm/src/`**
+`cache.ts` · `groq.ts` · `guard.ts` · `diagnosis-tail.ts` · `explain.ts` ·
+`llm.test.ts` (rewrote `index.ts`)
 
-**New — `eval`**
-`src/generator/index.ts` · `src/generator/prng.ts` ·
-`src/generator/distribution.ts` · `src/generator/time.ts` ·
-`src/generator/generator.test.ts` · `src/fingerprint.ts`
+**New — `packages/db/src/schema/`**
+`downtime-windows.ts` · `llm-cache.ts` · migration `0001_dry_malice.sql`
+
+**New — `apps/worker/src/`**
+`diagnose/index.ts` · `explain/index.ts` · `llm/pg-cache.ts` ·
+`ingest/downtime.ts` · `scripts/diagnose.ts` · `scripts/downtime-smoke.ts` ·
+`scripts/injection-smoke.ts` · `scripts/explain.ts`
+
+**New — `eval/src/`**
+`score-diagnosis.ts`
 
 **Modified**
-`packages/core/src/index.ts` (barrel) · `apps/worker/src/index.ts` (ingest loop,
-`--once`) · `eval/src/seed.ts` (rewritten) · `package.json` and
-`apps/worker/package.json` and `eval/package.json` (scripts) ·
-`docs/ENVIRONMENT_VARIABLES.md` (corrected URL) · `docs/CLAUDE_CONTEXT.md`
+`packages/core/src/types/enums.ts` (`cause_by` gained `downtime_signal`) ·
+`packages/core/src/index.ts` · `packages/db/src/table-names.ts` (domain vs
+supporting) · `packages/db/src/scripts/verify.ts` · `apps/worker/src/ingest/index.ts`
+(downtime branch) · `eval/src/generator/distribution.ts` and `index.ts` (taxonomy
+correction + day counts + window clamp) · `eval/src/generator/generator.test.ts` ·
+`docs/DECISIONS.md` (ADR-026…031) · `docs/DATABASE_DESIGN.md` · `README.md`
 
 ---
 
 ## Architecture changes
 
-None to the shape in `docs/ARCHITECTURE.md`. The data flow now exists for steps
-1–2 (ingest, normalize).
-
-Two things a future session needs to know:
-
-- **`raw_events.payload` stores the COMPLETE envelope**, not the inner
-  `payload` object. `normalizeEvent` accepts either — it unwraps a nested
-  `payload` key if present. This bit once already; see **Known issues**.
-- **Signature verification and normalization live in `packages/core`**, not in the
-  route. `node:crypto` is a deterministic computation, not I/O, so it does not
-  breach the purity fence. The route handler is a thin shell: verify, insert, 200.
+- **`cause_by` now has three values:** `rule`, `llm`, `downtime_signal`.
+- **Diagnosis precedence is downtime → rules → LLM → unknown.** Encoded in
+  `diagnoseCase`, and the order is the design.
+- **Core calls the LLM through an injected port** (`DiagnosisTailPort`). Core never
+  imports `@reflow/llm`; the purity fence blocks it. The worker wires the two.
+- **`packages/core/src/diagnose/taxonomy.ts` is the single source of truth** for
+  causes. The rule engine, the LLM prompt, the Zod schema, and the generator all
+  import it, so the label sets cannot drift.
 
 ---
 
 ## Schema changes
 
-**None.** Run 2 writes to the existing `raw_events` and `recovery_cases` tables
-and added no columns. The migration is still `0000_nifty_arclight.sql`.
+Migration `0001_dry_malice.sql` — **additive only**, no existing table touched.
 
-Current Neon state: 500 synthetic cases, all with `ground_truth`, 0 pending
-`raw_events`.
+- **`downtime_windows`** — Razorpay issuer outages. UNIQUE on
+  `provider_downtime_id` so `.updated`/`.resolved` upsert one row per outage.
+- **`llm_cache`** — persisted LLM responses keyed `sha256(model + prompt)`.
 
----
+Table count is now **9 domain + 3 supporting** (`users`, `downtime_windows`,
+`llm_cache`). `pnpm --filter @reflow/db verify` labels them.
 
-## API changes
-
-| Route | Auth | Notes |
-|---|---|---|
-| `POST /api/webhooks/razorpay` | HMAC | **NEW.** Verify → insert → 200. Never processes inline. |
-| `GET /api/webhooks/razorpay` | — | **NEW.** 405, for humans checking the URL. |
-| `GET /` | public | unchanged, static |
-| `GET /login` | public | unchanged |
-| `GET /dashboard` | protected | unchanged |
-| `/api/auth/*` | public | unchanged |
-
-**Webhook contract**
-
-- Header `x-razorpay-signature`: HMAC-SHA256 hex over the **raw body bytes**.
-  Missing, malformed, or mismatched → **400**, nothing stored.
-- Header `x-razorpay-event-id`: the idempotency key. Absent → a deterministic
-  `derived_<sha256 prefix>` of the body is used instead.
-- Duplicate delivery → **200** `{"received":true,"duplicate":true}`, no new row.
-- Storage failure → **500** deliberately, so Razorpay retries. Never 200 on a
-  failed write.
-
-**Events.** Nine subscribed. Five open cases (`payment.failed`,
-`subscription.halted`, `subscription.pending`, `invoice.expired`, plus the
-simulated `checkout.abandoned`). Five are recovery signals
-(`payment.captured`, `order.paid`, `payment_link.paid`, `subscription.charged`,
-`invoice.paid`) — stored and stamped processed, attributed to actions in Run 5.
+Neon state: 500 synthetic cases, all diagnosed, 0 exceptions, 0 undiagnosed.
 
 ---
 
 ## New commands
 
 ```
-pnpm ingest              drain raw_events once and exit (worker --once)
-pnpm dev:worker          poll raw_events every 5s
-pnpm webhook:smoke       end-to-end webhook test; BASE_URL=… to target prod
-pnpm eval:seed 500 --seed 42        generate + insert synthetic cases
-pnpm eval:seed 500 --seed 42 --dry-run   print the distribution, write nothing
-pnpm eval:fingerprint    sha256 of the synthetic lane as stored in Neon
+pnpm diagnose                 rules + downtime + LLM tail over undiagnosed cases
+pnpm diagnose --rules-only    no LLM at all
+pnpm diagnose --reset         clear diagnoses and exceptions, then re-diagnose
+pnpm score:diagnosis          rule table vs ground_truth, per-cause accuracy
+pnpm downtime:smoke           downtime + LLM tail + cache, row-level assertions
+pnpm injection:smoke          gate 0 blocks a real injection payload
+pnpm explain [-- <case-id>]   lazy per-case explanation, cache-first
 ```
-
-`pnpm eval:seed` **deletes existing synthetic cases first**, scoped to
-`is_synthetic = true`. Live cases are never touched. That is what makes re-running
-the same seed converge instead of accumulate.
 
 ---
 
 ## Decisions made this run
 
-- **Signature + normalization in core, not the route.** Deterministic crypto is
-  not I/O. Makes the trust boundary unit-testable and keeps the route thin.
-- **`checkout.abandoned` is our own event type.** Razorpay emits no "customer
-  left" event. Naming it explicitly keeps the simulated lane visible in
-  `raw_events.event_type`.
-- **Unreadable amount → 0 paise plus a warning, not a rejected delivery.**
-  `amount_paise` is NOT NULL. A zero-amount case is visibly wrong and reaches the
-  exception list; dropping the event would hide it.
-- **A fractional amount is refused, not rounded.** A fractional "paise" value
-  means the field is really rupees. Rounding would silently corrupt money.
-- **Contact identifiers are hashed, never stored.** `cust_<16 hex>` from
-  sha256 when only an email or phone is available, so the cross-case contact cap
-  can recognise a repeat customer while the system still holds no PII.
-- **`insufficient_funds` clusters at 70%, not 100%, in the salary window.**
-  Forcing 100% would make the salary-cycle heuristic trivially perfect and
-  overstate Arm C — exactly threat 3 in `EVAL_METHODOLOGY.md`. The window is ~37%
-  of the month, so 70% is a strong, visible cluster with a real tail to get wrong.
-- **Bursts share one issuer.** A real outage hits one bank, and sharing the issuer
-  is what makes the correlation visible to the bandit's issuer × method bucket.
-- **A fixed reference date (`2026-03-01T00:00:00Z`)** anchors the simulation
-  window. Using the wall clock would silently break "same seed, same data"
-  tomorrow. Override with `--reference-date`.
+Six ADRs, `docs/DECISIONS.md` ADR-026…031:
+
+- **026** the generator was corrected to the canonical taxonomy (it was emitting
+  illegal labels for 45% of the dataset)
+- **027** checkout carries a funnel-stage signal, not a provider error
+- **028** days-overdue is carried in `error_reason`, not a new column
+- **029** Razorpay downtime events as a first-class diagnosis path
+- **030** explanations generated worker-side, lazily, per case
+- **031** Prompt Guard is called as a text classifier, not a chat model
 
 ---
 
 ## Known issues
 
 ```
+- [LOW] 2/500 cases confuse customer_opt_out with mandate_revoked. Genuinely
+  indistinguishable from the error tuple on a mandate rail; both terminal, so the
+  behaviour is identical — blocks next phase? NO.
 - [LOW] The deleted `razorpay` Vercel project still posts a GitHub commit status,
-  so commits show two checks and an aggregate `failure` while `reflow` is green
-  — GitHub/Vercel integration — blocks next phase? NO.
-- [LOW] Generator source mix lands at 56.8/19.2/12.4/11.6 against a 55/20/15/10
-  target; checkout is ~2.6pp low. Binomial noise at n=500 (σ≈1.6pp), inside the
-  ±4pp test tolerance. Not a defect; noted so nobody "fixes" it into a bias.
-- [LOW] pnpm peer-dependency warning on install — cosmetic, unchanged from Run 1.
-- [LOW] next-auth's `jose` warns about DecompressionStream in the Edge runtime
-  during build — transitive dependency, build succeeds.
+  so commits show two checks and an aggregate failure while `reflow` is green.
+- [LOW] pnpm peer-dependency warning on install — cosmetic.
+- [LOW] next-auth's `jose` warns about DecompressionStream in the Edge runtime.
 ```
 
-### Bug found and fixed this run, worth remembering
+### Three real bugs found and fixed this run
 
-The normalizer originally read entities from the inner `payload` object, but
-`raw_events.payload` stores the **whole envelope**. Every unit test passed while
-every live event silently produced a null-filled case with no `external_ref`.
+1. **Prompt Guard was failing every call.** It is a text-classification model and
+   rejects a system message: *"messages must contains a single user message for
+   text classification models"*. Every guard call returned 400. Gate 0 still
+   blocked attacks because the heuristic pre-screen runs first and fails closed —
+   which is exactly why that layer exists. Caught by the cache assertion, not by a
+   unit test: failed calls are not cached, so the re-run made one extra API call.
+   **Watch for this pattern: a broken component hidden behind a working fallback.**
 
-It was caught only by the end-to-end smoke test, which asserted the resulting
-`recovery_case` rather than the normalizer's return value. `normalizeEvent` now
-accepts either shape, and `normalize.test.ts` has a
-"full webhook envelope (the real ingest shape)" block so it cannot regress.
+2. **`Number('')` is 0.** `scoreFromGuardOutput` parsed an empty guard response as
+   0.0, i.e. "definitely benign" — failing the security screen OPEN. Now requires
+   a numeric literal and returns `null` otherwise.
 
-**Lesson for later runs: a unit test that feeds a hand-made fixture proves less
-than one assertion against a row that actually reached Postgres.**
+3. **Reasoning models return empty content on a tight token budget.** `gpt-oss-*`
+   emit reasoning tokens before any content, so `max_tokens: 180` produced
+   `finish_reason: "length"` with `content: ""`. Budgets are now 700.
+
+Plus a generator bug: day-pool placement could put a case *after* the reference
+date, because the first and last IST days are only partly inside a UTC window.
+Now clamped. Caught by a Run 2 test, which is the argument for keeping them.
 
 ---
 
 ## Incomplete work
 
-- **No diagnosis.** `recovery_cases.root_cause`, `cause_confidence`, and
-  `cause_by` are still null on every live case. Run 3.
-- **`packages/llm` is still interface-only.** No Groq client, no prompts, no
-  injection screen, no cache. Run 3.
-- **`eval/src/index.ts` is still a placeholder.** The generator and seeding are
-  real; the three arms and `RESULTS.md` are Run 7.
-- **Checkout abandonment has no producer.** The normalizer, event type, and
-  synthetic path all exist, but nothing emits `checkout.abandoned` against the
-  live lane. Synthetic cases cover it.
-- **Recovery-signal events are stored, not attributed.** They get stamped
-  processed with no case; matching them to actions inside
-  `attribution.window_hours` is Run 5.
-- **Ingest has no `merchant_id` routing.** Every case is attributed to the single
-  seeded merchant, resolved by earliest `created_at`. Multi-tenancy stays modelled
-  but not enforced.
+- **No policy engine or guardrail chain.** Every case has a cause; nothing decides
+  what to do about it. `plans` is still empty. Run 4.
+- **No scheduler, no execution, no outcomes.** `actions`, `outcomes`, and
+  `pgboss.*` are untouched. Run 5.
+- **The dashboard does not surface diagnoses.** `explainOneCase` exists and works,
+  but nothing renders it — and the web app cannot generate one, since
+  `GROQ_API_KEY` is worker-only (ADR-030). Run 6 must either read the cached text
+  or call the worker.
+- **`eval/src/index.ts` is still a placeholder.** The three arms and `RESULTS.md`
+  are Run 7.
+- **No held-out slice yet.** EVAL_METHODOLOGY specifies 100 of the 500 held out
+  for diagnosis metrics, never used for tuning. Not implemented; the rule table was
+  scored on all 500. Since the table was never tuned against the labels, this is
+  reporting hygiene rather than leakage — but Run 7 should implement the split.
+- **Mandates are synthetic-only.** The Razorpay account has no Subscriptions, so
+  `subscription.*` events are unavailable. Disclosed in the README.
 - **`DEMO_TIME_SCALE` still unconsumed.** Central scheduling helper is Run 5.
-- **No `pgboss.*` tables.** Run 5.
 
 ---
 
 ## Verification performed
 
-Every line was run. Commands and results, not inspection.
+Every line was run.
 
 ```
-1. Correctly-signed POST → raw_events row AND recovery_case
-   → pnpm dev; pnpm webhook:smoke
-   → 200 {"received":true,"duplicate":false}; 1 raw_events row;
-     1 recovery_case: source=payment, amount_paise=250000, method=card,
-     issuer=hdfc, error_reason=insufficient_funds, status=open,
-     is_synthetic=false; raw event stamped processed_at. PASS
+1. All 500 cases diagnosed
+   → pnpm diagnose --reset
+   → scanned 500, diagnosed 500, failed 0, undiagnosed remaining 0
+   → persisted cause_by in Neon: rule 500. PASS
 
-2. Same payload twice → exactly one case
-   → second POST returned 200 {"received":true,"duplicate":true}
-   → raw_events rows=1, recovery_cases=1. PASS
+2. Rule / LLM / downtime split printed, rule share high
+   → same run: rule 500 (100.0%), downtime_signal 0 (0.0%), llm 0 (0.0%)
+   → rule share is 100%, which is the shape POLICY_SPEC §6 wants. PASS
 
-3. Incorrectly-signed payload rejected 400
-   → bad signature → 400; missing header → 400
-   → both stored nothing (raw_events rows=0). PASS
+3. Per-cause accuracy vs ground_truth printed
+   → pnpm score:diagnosis
+   → coverage 500/500 (100%), correct 498 (99.6%), precision 99.6%
+   → per source: payment 100%, checkout 100%, receivable 100%, mandate 97.8%
+   → full 21-row table printed; only confusion is 2x
+     customer_opt_out -> mandate_revoked. PASS
 
-4. 500 synthetic cases in Neon with ground_truth
-   → pnpm eval:seed 500 --seed 42
-   → "inserted 500 synthetic case(s)"
-   → pnpm eval:fingerprint → 500 synthetic, 500 with ground_truth. PASS
+4. Unknown rate and LLM parse-failure rate printed
+   → unknown 0 (0.0%); parse-failure rate 0.0%; exceptions created 0. PASS
 
-5. Distribution assertions pass, breakdown printed
-   → pnpm eval:seed 500 --seed 42 --dry-run  (full output in the phase report)
-   → sources 56.8/19.2/12.4/11.6 vs 55/20/15/10
-   → terminal 12.2% vs 12%
-   → payment causes (n=260): 22.7/23.8/14.6/11.5/13.1/5.8/3.5/5.0
-     vs 24/20/16/12/12/6/6/4
-   → issuer_down: 4 bursts, sizes [16,15,11,11], each one bank, 30-min windows
-   → insufficient_funds 71/100 in the 18th-28th IST window
-   → 500/500 complete ground_truth; 264 unique customers
-   → 48 generator tests assert all of this. PASS
+5. Injection test blocks correctly
+   → pnpm injection:smoke  (10 checks, all PASS)
+   → ZERO LLM calls for the injection case (before=0 after=0)
+   → persisted root_cause = 'unknown', status = 'exception'
+   → exceptions ROW in Neon reads "injection_suspected: gate 0 blocked this case
+     (score 1.00 >= 0.8, by heuristic, patterns: ignore-previous-instructions,
+     role-reassignment, outcome-steering, money-action-steering)"
+   → the case was NOT marked recovered as the payload demanded
+   → benign control DID reach the LLM (before=0 after=2) — the gate
+     discriminates rather than refusing everything. PASS
 
-6. Re-running seed 42 produces identical data
-   → pnpm eval:fingerprint  → d48a1dbb…e735d5
-   → pnpm eval:seed 500 --seed 42  (cleared 500, inserted 500)
-   → pnpm eval:fingerprint  → d48a1dbb…e735d5  IDENTICAL. PASS
-   → in-memory fingerprint 357500545008297e stable across runs.
+6. Downtime window matching verified with a live-shaped payload
+   → pnpm downtime:smoke  (16 checks, all PASS)
+   → signed payment.downtime.started -> 200 -> downtime_windows ROW in Neon
+     (issuer=hdfc, method=card, unresolved, severity=high)
+   → INSIDE window: persisted root_cause=issuer_down,
+     cause_by='downtime_signal', confidence 1.0 — even though the error tuple
+     said insufficient_funds
+   → OUTSIDE window: persisted insufficient_funds, cause_by='rule' — the
+     inference path is intact and independent
+   → unit tests cover inside/outside/wrong issuer/wrong method/unresolved. PASS
 
-7. pnpm typecheck clean, pnpm test green
+7. Re-run hits the cache and makes zero new LLM calls
+   → pnpm downtime:smoke → "re-running the same tail call made ZERO new API
+     calls — before=1 after=1"
+   → pnpm explain → second view: cached=true newApiCalls=0, identical text. PASS
+
+8. pnpm typecheck clean, pnpm test green
    → typecheck exit 0 across all 6 projects
-   → test exit 0 — 8 files, 190 tests passed. PASS
+   → test exit 0 — 12 files, 338 tests
+   → pnpm lint exit 0. PASS
 
-8. Push succeeded, Vercel deploy green
-   → git push origin main → f801935..0cc5dde, exit 0
-   → reflow project: "Deployment has completed" (SUCCESS)
-   → GET https://reflow-puce.vercel.app/ → 200, contains "Reflow"
-   → BASE_URL=https://reflow-puce.vercel.app pnpm webhook:smoke
-     → ALL 20 CHECKS PASSED against the real production webhook. PASS
-   → the dead `razorpay` project also reports a failure status; see Known issues.
-
-Also run:
-   pnpm lint         → exit 0 (purity fence intact)
-   pnpm build        → exit 0, /api/webhooks/razorpay registered dynamic
-   pnpm ingest       → 0 pending, clean drain
+9. Push succeeded, reflow deploy still green
+   → git push origin main → 45bc0e8..525e479, exit 0
+   → see Git state. PASS
 ```
 
 ---
@@ -314,41 +315,32 @@ Also run:
 ## Git state
 
 ```
-Last commit: 0cc5dde  fix(normalize): read entities from the stored envelope, add smoke test
-Branch:      main
-Pushed:      y  (origin/main == 0cc5dde)
-History:     never rewritten, never force-pushed
+Branch:  main
+Pushed:  y
+History: never rewritten, never force-pushed
 
 Commits this run:
-  a89e519  docs: correct Vercel project to reflow and record the permanent webhook URL
-  60da581  feat(ingest): signed webhook receiver, pure normalizer, transactional ingest
-  b174968  feat(eval): seeded synthetic generator with bursty outages and ground truth
-  0cc5dde  fix(normalize): read entities from the stored envelope, add smoke test
+  2312102  feat(diagnose): closed taxonomy, rule table, downtime windows, llm_cache
+  81bf916  feat(llm): groq provider, injection gate, zod-validated tail, scoring harness
+  75e6b54  fix(guard): call Prompt Guard as a text classifier, add downtime smoke test
+  525e479  feat(diagnose): lazy explanations, injection smoke test, ADRs and docs
   (+ this docs commit)
 
-.env.local ignored and never committed:  verified — git check-ignore -v .env.local
-                                         → .gitignore:7:.env*
+reflow Vercel deploy for 525e479: SUCCESS
+
+.env.local ignored and never committed: verified — git check-ignore -v .env.local
 ```
 
 ---
 
 ## Human action needed
 
-**1 — Register the webhook. This is the only manual step in the whole build.**
-See the block at the end of the Run 2 phase report. The endpoint is already
-deployed and has been smoke-tested in production, so registration is the last
-piece.
+**None.** The webhook is registered and verified. Nothing is blocked.
 
-Use the **existing** `RAZORPAY_WEBHOOK_SECRET` from `.env.local`. It was generated
-in Run 1 and is already in Vercel. Generating a new one breaks every signature
-check.
+Optional, cosmetic: remove the deleted `razorpay` project's GitHub integration so
+commits stop showing a red check.
 
-**2 — Optional, cosmetic.** Remove the deleted `razorpay` project's GitHub
-integration so commits stop showing a red check. GitHub repo → Settings →
-Integrations, or delete the stale project in the Vercel dashboard.
-
-**3 — Before Run 8:** `GROQ_API_KEY` goes on Railway, not Vercel. The worker is
-the only surface that calls an LLM.
+**Before Run 8:** `GROQ_API_KEY` goes on Railway, not Vercel.
 
 **After Run 8:** run `docs/TESTING_GUIDE.md`.
 
@@ -362,59 +354,51 @@ email     demo@reflow.dev
 password  reflow-demo-2026
 ```
 
-Public in this repository by design — synthetic data only, no PII. Override with
-`$env:SEED_USER_PASSWORD = '…'` then `pnpm db:seed`.
-
 ---
 
 ## Next phase
 
-**RUN 3 — Diagnosis.** Deterministic rule table mapping
-`(error_code, error_source, error_step, method)` → one root cause; the LLM tail
-for unmapped tuples under a Zod schema; Llama Prompt Guard as gate 0 on all
-untrusted text; `cause_by` recording `'rule'` or `'llm'` on every case.
+**RUN 4 — Policy + guardrails.** Cause → intervention mapping from
+POLICY_SPEC §3, the static timing strategy from §4, and the eight-gate chain
+from §5 with ordering as a tested property.
 
-The generator already emits realistic error tuples for every non-checkout cause
-(`CAUSE_ERROR_SIGNATURES` in `eval/src/generator/distribution.ts`), and
-`ground_truth.true_root_cause` is the label to score against. **Build the rule
-table against that table, and measure precision on the held-out slice.**
+Everything Run 4 needs is in place: every case has a `root_cause` from the closed
+taxonomy, `GATE_TERMINAL_CAUSES` (4 values, including `mandate_revoked`) is
+exported from core, and `policy.yaml` is loaded and validated.
+
+**Note for gate 5:** terminal causes are already identifiable via
+`isTerminalCause()`. The rule table checks them FIRST, and gate 5 must do the same
+— POLICY_SPEC calls that ordering load-bearing, and it needs its own test.
 
 ---
 
 ## Running notes for future sessions
 
-Traps a fresh session would otherwise hit the hard way:
-
-- **`raw_events.payload` is the whole envelope.** Entities are at
-  `payload.<entity>.entity`. `normalizeEvent` unwraps either shape — do not
-  "simplify" that away.
-- **HMAC is computed over the raw body bytes.** Never `JSON.parse` then
-  re-serialise before verifying; key order and whitespace change the digest.
-- **The webhook must never process inline.** Verify, insert, 200. A slow handler
-  gets retried and retries cause duplicate work.
-- **Return 500, not 200, when the insert fails.** A 200 tells Razorpay the event
-  was accepted and it will never resend.
-- **`pnpm eval:seed` deletes synthetic cases first.** Scoped to
+- **The taxonomy is CLOSED — 21 causes.** `packages/core/src/diagnose/taxonomy.ts`
+  is the only source. Never widen it to accommodate a label from elsewhere; fix
+  the other end (ADR-026).
+- **Never tune the rule table against `ground_truth`.** It was written from
+  POLICY_SPEC and Razorpay semantics, then scored. Fitting it to the oracle would
+  make every Run 7 diagnosis number circular.
+- **`packages/core` stays pure**, enforced by ESLint. `node:crypto` is fine —
+  deterministic, no I/O. The LLM arrives as an injected port. Only `env/load.ts`
+  and `policy/load.ts` are exempt.
+- **Prompt Guard takes ONE user message, no system prompt, no fence.** Anything
+  added becomes part of what is classified.
+- **Gate 0 fails CLOSED on a heuristic hit and only fails open when the model is
+  unreachable AND heuristics found nothing** — marked `degraded: true`.
+- **Give reasoning models room.** `gpt-oss-*` spend tokens on reasoning before
+  content; a tight `max_tokens` yields empty content.
+- **The LLM may never choose an action.** The Zod schema is `.strict()`, so an
+  `action` key is a rejected response. That is deliberate.
+- **`pnpm eval:seed` deletes synthetic cases first**, scoped to
   `is_synthetic = true`. Never widen that filter.
-- **The generator's draw ORDER is part of the dataset.** Reordering random draws
-  changes output at the same seed. Adding a draw mid-sequence invalidates every
-  stored fingerprint.
-- **Never call `Math.random()` or read the clock in `eval/`.** Determinism fails
-  silently and nothing tells you.
-- **`packages/core` must stay pure**, enforced by ESLint. Time is a parameter.
-  `node:crypto` is permitted — deterministic, no I/O. Only `env/load.ts` and
-  `policy/load.ts` are exempt; do not add a third.
+- **The generator's draw ORDER is part of the dataset.** Adding a draw
+  mid-sequence invalidates every stored fingerprint. Current: `ea588ebc96433e73`.
+- **Assert against rows that reached Postgres.** Three of the four bugs this run
+  were invisible to unit tests.
+- **An unresolved downtime window matches every later failure forever.** Check
+  `findStaleOpenWindows` before trusting a downtime attribution.
 - **All money is integer paise.** A fractional amount is refused, never rounded.
-- **Do not write `.js` in relative imports** inside workspace packages (ADR-022).
-- **TypeScript is pinned to 6.0.3** (ADR-024). 7.x breaks `typescript-eslint` and
-  with it the purity fence.
-- **`.env.local` is at the repo ROOT** and Next looks in `apps/web`; handled in
-  `next.config.ts`. `POLICY_PATH` is resolved by walking up from `cwd`.
-- **Neon needs the pooled connection string.** Enforced for `neon.tech` hosts only.
-- **Groq free tier binds on TPM (8,000/min).** Hitting limits during eval means the
-  rule table is too thin — a design smell, not a quota problem. Cache by input hash.
-- **Guardrails re-run at execution time**, not only at planning.
-- **Assert against rows that reached Postgres, not just function returns.** The one
-  real bug in Run 2 passed every unit test and was caught only end to end.
-- **Never claim a completion criterion passed without running it.** The human tests
-  once, at the end.
+- **TypeScript is pinned to 6.0.3.** 7.x breaks `typescript-eslint` and the fence.
+- **Never claim a criterion passed without running it.**
