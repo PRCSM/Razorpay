@@ -13,7 +13,7 @@
 import { getWorkerEnv, loadPolicy } from '@reflow/core';
 import { closeAllPools, createPooledDb, exceptions, recoveryCases } from '@reflow/db';
 import { GroqClient, GroqDiagnosisTail } from '@reflow/llm';
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { config as loadDotenv } from 'dotenv';
 import { resolve } from 'node:path';
 import { countUndiagnosedCases, runDiagnosePass } from '../diagnose/index';

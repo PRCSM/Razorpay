@@ -163,7 +163,10 @@ export class GroqDiagnosisTail implements DiagnosisTailPort {
         system: SYSTEM_PROMPT,
         user,
         temperature: 0,
-        maxTokens: 220,
+        // Headroom for reasoning tokens: gpt-oss models emit reasoning before
+        // content, and a tight budget returns empty content with
+        // finish_reason "length".
+        maxTokens: 700,
       });
 
       if (outcome.cached) this.cacheHits += 1;

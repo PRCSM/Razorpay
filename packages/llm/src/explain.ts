@@ -97,12 +97,20 @@ export async function explainCase(
     };
   }
 
+  /**
+   * The token budget must cover REASONING as well as output.
+   *
+   * `openai/gpt-oss-*` are reasoning models: they emit reasoning tokens before any
+   * content, and a tight `max_tokens` gets consumed entirely by that, returning
+   * `finish_reason: "length"` with empty content. Two sentences need ~60 tokens of
+   * prose; the rest is headroom for the reasoning pass.
+   */
   const outcome = await client.complete({
     slot: 'copy',
     system: SYSTEM_PROMPT,
     user: buildUserPrompt(request),
     temperature: 0,
-    maxTokens: 180,
+    maxTokens: 700,
   });
 
   if (!outcome.ok || outcome.text === null) {

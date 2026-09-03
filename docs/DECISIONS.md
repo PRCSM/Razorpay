@@ -321,3 +321,57 @@ Format: Decision · Context · Options · Chosen · Reason · Trade-offs · Cons
 **Reason.** Neither value is issued by a third party. The document itself specifies how to produce them — `openssl rand -hex 32` and `openssl rand -base64 32` — so nothing was missing that only the human could supply, and halting would have cost the run for a step that takes one command. HALT reason 1 covers a credential that is absent, expired, or rejected by a service; this was neither.
 **Trade-offs.** The human must use the generated `RAZORPAY_WEBHOOK_SECRET` when registering the webhook in Run 2 rather than inventing a new one, or signature verification will fail on every delivery.
 **Consequences.** Both were written to the gitignored `.env.local` with Node's `crypto.randomBytes`, and neither value has been printed to a log, a commit, a document, or a phase report. Both must also be set in Vercel before the dashboard will serve.
+
+---
+## ADR-026 — The synthetic generator was corrected to the canonical taxonomy
+**Context.** Run 3 opened with a direct conflict. `docs/POLICY_SPEC.md` §1 defines a CLOSED root-cause taxonomy of 21 values and states that nothing outside it is ever valid. The Run 2 generator emitted its own vocabulary for three of the four surfaces: mandates got `mandate_pre_debit_missing`, `mandate_paused`, and bare `insufficient_funds`; checkout got `checkout_abandoned_price` / `_friction` / `_distraction`; receivables got `invoice_overdue`, `invoice_disputed`, `invoice_awaiting_po`. None of those are legal causes. That is 45% of the dataset — mandate 20%, checkout 15%, receivable 10% — labelled with values the rule engine is forbidden to return, which makes scoring those lanes structurally impossible rather than merely inaccurate.
+**Options.** (a) Widen the rule table to emit the generator's vocabulary. (b) Add a translation layer between the two. (c) Correct the generator to the canonical taxonomy.
+**Chosen.** (c).
+**Reason.** POLICY_SPEC is the authority and says so explicitly; the generator is downstream of it. (a) would abandon the closed-taxonomy guarantee, which is the thing that stops the LLM inventing causes. (b) would hide the inconsistency behind a mapping nobody would maintain, and a translation layer between an oracle and the system it scores is exactly where a metric goes quietly wrong. Correcting the ORACLE to emit legal labels is not the same as tuning the RULES to match the oracle — the prohibition in TASK 7 is against the latter, and the rule table was still written from POLICY_SPEC and Razorpay error semantics before it was ever scored.
+**Trade-offs.** The dataset fingerprint changed (`ea588ebc96433e73`), so Run 2's recorded fingerprint no longer reproduces. Acceptable: the dataset is regenerable by design and no measured result had been published from it.
+**Consequences.** `packages/core/src/diagnose/taxonomy.ts` is now the single source of truth, imported by the rule engine, the LLM prompt, the Zod response schema, and the generator, so the label sets cannot drift again. A test asserts the exact contents of all five groups against POLICY_SPEC, and another asserts the Run 2 vocabulary is rejected.
+
+---
+## ADR-027 — Checkout abandonment carries a stage signal, not a provider error
+**Context.** Razorpay emits no "customer left" event, so `checkout.abandoned` is our own simulated event. Run 2 gave those cases null error fields, which left the rule table nothing to match on — every checkout case would have fallen to the LLM.
+**Options.** (a) Leave the fields null and let the LLM classify all checkout cases. (b) Record the funnel stage the customer reached in the existing error fields.
+**Chosen.** (b): `error_code = 'CHECKOUT_ABANDONED'`, `error_source = 'customer'`, and `error_step` set to `checkout_method_selection`, `checkout_authentication`, or `checkout_review`.
+**Reason.** We own the event, so we legitimately know where the customer stopped — that is observed data, not an inference. (a) would hand a light-depth surface entirely to the LLM, which inverts the rule POLICY_SPEC §6 exists to enforce, and would spend Groq quota on the easiest classification in the system.
+**Trade-offs.** `error_code` now carries a value that did not come from a provider. Mitigated by the marker being obviously ours rather than a Razorpay code, and by `raw_events.event_type` recording `checkout.abandoned` so the simulated lane stays visible.
+**Consequences.** The three checkout causes map deterministically from the stage. A Run 2 test asserting "checkout cases carry no provider error code" was updated to assert the stage signal instead.
+
+---
+## ADR-028 — Days-overdue is carried in `error_reason`, not a new column
+**Context.** `overdue_soft` (<15 days) and `overdue_hard` (≥15 days) are the same provider signal split by a day count, so diagnosis needs the age of the invoice. `recovery_cases` has no such column.
+**Options.** (a) Add an `days_overdue` column. (b) Encode it in `error_reason` as `invoice_past_due_date:<n>`. (c) Derive it at diagnosis time from `opened_at`.
+**Chosen.** (b).
+**Reason.** (c) is wrong: `opened_at` is when we noticed the invoice expired, not when it became due, so it would measure our own latency. (a) is the cleanest model but costs a migration for one light-depth surface, and the value is genuinely a detail of the provider's reason rather than a first-class domain attribute. (b) gives both lanes one field populated the same way — the generator writes it, and the live normalizer computes it from the invoice's due date.
+**Trade-offs.** A structured value inside a free-text field, which is the kind of thing that rots. Contained by `parseDaysOverdue` being the only reader, with tests for every malformed form.
+**Consequences.** The rule engine falls back to parsing `error_reason` when `daysOverdue` is not supplied. An overdue invoice with no readable day count matches no rule and goes to the LLM tail, which is the correct outcome rather than a guessed threshold.
+
+---
+## ADR-029 — Razorpay downtime events as a first-class diagnosis signal
+**Context.** The registered webhook receives `payment.downtime.started`, `.updated`, and `.resolved`. Razorpay reports issuer outages directly, with a start, an end, an affected rail, and a severity. Until Run 3, `issuer_down` was inferred solely from a `GATEWAY_ERROR` tuple.
+**Options.** (a) Ignore the events and keep inferring. (b) Replace the inference path with the downtime signal. (c) Add the signal as a higher-precedence path and keep inference intact.
+**Chosen.** (c), with a new `cause_by` value `downtime_signal` alongside `rule` and `llm`.
+**Reason.** A confirmed outage window is an OBSERVATION with a timestamp; an error code is an inference about one. When both are available the observation should win, and it should be distinguishable in the data so RESULTS.md can report how much of `issuer_down` was measured versus deduced. (b) is not an option: the synthetic lane contains no downtime events, so removing inference would leave 38 synthetic `issuer_down` cases undiagnosable and would make the eval unable to exercise the path that runs when Razorpay has not reported an outage.
+**Trade-offs.** An unresolved window matches every later failure on that issuer indefinitely, so a missed `.resolved` delivery would over-attribute `issuer_down`. Mitigated by `findStaleOpenWindows`, which surfaces any window open beyond 24h; deliberately NOT auto-closed, since inventing an end time would fabricate data.
+**Consequences.** New table `downtime_windows`, keyed UNIQUE on `provider_downtime_id` so `.updated` and `.resolved` upsert one row per outage. Diagnosis prefers the most specific matching window (issuer+rail over platform-wide). Verified end to end against persisted rows: a failure inside the window reads `issuer_down` / `downtime_signal` / 1.0, and the identical tuple outside it reads `insufficient_funds` / `rule`.
+
+---
+## ADR-030 — Explanations are generated worker-side, lazily, per case
+**Context.** TASK 5 requires the plain-English "why this failed" text to be generated on dashboard view, never for the batch — 500 cases against an 8,000 TPM ceiling is roughly 100 minutes. But `GROQ_API_KEY` is worker-only and must never be added to Vercel, so the web app cannot make an LLM call at all.
+**Options.** (a) Add the Groq key to Vercel. (b) Pre-generate explanations for every case in the worker. (c) Generate lazily in the worker, one case at a time, and have the dashboard read what exists.
+**Chosen.** (c).
+**Reason.** (a) is explicitly forbidden and would break the least-privilege boundary that means a compromised web surface cannot leak the key — the typechecker enforces it, since `webEnvSchema` has no Groq key at all. (b) is the exact cost TASK 5 exists to avoid. (c) keeps both properties: nothing is pre-generated, and the key stays on one surface.
+**Trade-offs.** The dashboard cannot generate an explanation synchronously on first view; Run 6 will either surface the cached text or trigger the worker. Called out rather than papered over.
+**Consequences.** `explainOneCase` refuses to explain a case whose cause is null or `unknown`, because explaining an absent diagnosis is the model speculating. Explanations share the `llm_cache`, so a second view costs nothing and the wording is stable between loads — verified: `newApiCalls=0` and identical text on re-view.
+
+---
+## ADR-031 — Prompt Guard is called as a text classifier, not a chat model
+**Context.** Gate 0 screens all untrusted text through `LLM_MODEL_GUARD`. The first implementation sent a system prompt plus a fenced user message, as for any chat model. Every guard call failed with HTTP 400: *"messages must contains a single user message for text classification models"*. Because failed calls are not cached, this also broke the "zero new API calls on re-run" property, which is how the bug was noticed.
+**Options.** (a) Swap `LLM_MODEL_GUARD` for a general chat model and prompt it to classify. (b) Call Prompt Guard the way it expects.
+**Chosen.** (b): exactly one user message containing only the text to classify, no system prompt, no fence.
+**Reason.** Prompt Guard 2 is a purpose-built injection classifier and is far more reliable at this than a general model told to behave like one. Anything added to the message becomes part of what gets classified, so the fence was actively skewing the score.
+**Trade-offs.** The response is a bare probability string (`"0.9995654225349426"` for an attack, `"0.0005332987"` for benign — verified live), not a label, so the parser is model-shaped. Since `LLM_MODEL_GUARD` is configurable, label-based fallbacks are retained for a differently-behaved model.
+**Consequences.** `GroqClient.complete` now takes an optional `system`. `scoreFromGuardOutput` rejects an empty or unparseable response as `null` rather than parsing it as 0 — `Number('')` is 0, which would have read as "definitely benign" and failed the screen OPEN. The heuristic pre-screen runs first and fails CLOSED, so gate 0 still works when Groq is unreachable; a security control that fails open the moment its API is down is not a control.

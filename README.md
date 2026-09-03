@@ -19,6 +19,34 @@ This project runs **two data lanes**. Both flow through identical decision code 
 
 Every case in the database carries an `is_synthetic` flag. Every number in `eval/RESULTS.md` states which lane produced it. Nothing in this repo blends the two.
 
+### What the live lane does and does not cover
+
+Being specific, because "works against real Razorpay" is easy to imply and harder to earn.
+
+| Surface | Live Razorpay events | Notes |
+|---|---|---|
+| Failed one-time payments | ✅ Exercised | `payment.failed` delivered and verified end to end in production |
+| Issuer downtime | ✅ Exercised | `payment.downtime.started` / `.updated` / `.resolved` |
+| Recovery signals | ✅ Exercised | `payment.captured`, `order.paid`, `payment_link.paid`, `invoice.paid` |
+| B2B receivables | ✅ Exercised | `invoice.expired` |
+| **Mandates / subscriptions** | ❌ **Not exercised** | **Synthetic lane only — see below** |
+| Checkout abandonment | ❌ Not exercised | Razorpay emits no "customer left" event; simulated by design |
+
+**Mandates were never exercised against live Razorpay events.** The Razorpay
+account used for this build does not have Subscriptions enabled, so
+`subscription.halted`, `subscription.pending`, and `subscription.charged` are
+unavailable to it. The mandate normalizer, the four mandate root causes, and the
+mandate policy paths are all fully implemented and are exercised by the synthetic
+lane — but no real mandate webhook has ever reached this system.
+
+Read every mandate number in `eval/RESULTS.md` as synthetic. Nothing in this
+repository should be taken to imply live mandate coverage.
+
+Checkout abandonment is a different case: there is no Razorpay event for it at
+all, so it is simulated deliberately rather than as a limitation. The
+`checkout.abandoned` event type is ours, and it is labelled as such in
+`raw_events.event_type`.
+
 Full method: [`docs/EVAL_METHODOLOGY.md`](docs/EVAL_METHODOLOGY.md)
 
 ---
@@ -57,6 +85,33 @@ Every money action is explainable, bounded, gated, and logged to an append-only 
 | B2B overdue receivables | Light | 3 | 2 |
 
 Breadth of engine over depth of all four. The two full-depth surfaces carry the headline numbers; all four are measured.
+
+### Diagnosis: measured before inferred
+
+The rule engine decides; the LLM explains and handles the tail. Three paths, in
+strict precedence, and every case records which one answered it in `cause_by`:
+
+| Path | `cause_by` | Confidence | When |
+|---|---|---|---|
+| **Razorpay downtime signal** | `downtime_signal` | 1.0 | The failure falls inside a confirmed outage window for the same issuer and rail |
+| Deterministic rule table | `rule` | 1.0 | The `(error_code, error_source, error_step, method)` tuple is mapped |
+| LLM tail | `llm` | model's own, ≥ 0.7 | Nothing else matched |
+
+**Reflow uses Razorpay's `payment.downtime.*` events rather than inferring
+downtime from error codes.** Razorpay reports issuer outages directly, so
+`issuer_down` becomes an *observed fact* with a start and end time instead of a
+guess from a `GATEWAY_ERROR`. That is a platform-native signal most retry systems
+ignore, and it changes the intervention: during a confirmed outage the right move
+is to wait for the window to clear, not to burn attempts against a bank that is
+down.
+
+The inference path is kept fully working and independently tested, because the
+synthetic lane has no downtime events at all — so both paths must stand alone.
+
+On the 500-case synthetic batch the rule table answers **100%** of cases at
+**99.6%** accuracy against ground truth, which is the intended shape: a thin rule
+table pushing work to the LLM would be a design smell, and the split is reported
+either way.
 
 ---
 

@@ -12,6 +12,8 @@
     "webhook:smoke": "tsx src/scripts/webhook-smoke.ts",
     "diagnose": "tsx src/scripts/diagnose.ts",
     "downtime:smoke": "tsx src/scripts/downtime-smoke.ts",
+    "injection:smoke": "tsx src/scripts/injection-smoke.ts",
+    "explain": "tsx src/scripts/explain.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

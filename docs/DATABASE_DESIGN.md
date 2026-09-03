@@ -22,10 +22,18 @@ merchants
             ├─< exceptions
             └─< audit_log
 
-raw_events      (standalone; consumed to create recovery_cases)
-bandit_arms     (standalone; keyed by issuer × method × cause)
-pgboss.*        (managed by pg-boss)
+raw_events        (standalone; consumed to create recovery_cases)
+bandit_arms       (standalone; keyed by issuer × method × cause)
+downtime_windows  (standalone; Razorpay issuer outages — Run 3, ADR-029)
+llm_cache         (standalone; persisted LLM responses — Run 3)
+users             (dashboard login — Run 1, ADR-021)
+pgboss.*          (managed by pg-boss)
 ```
+
+**Table count.** Nine domain tables, plus three supporting ones added later:
+`users` (Run 1), `downtime_windows` and `llm_cache` (Run 3). The nine below are
+the domain model; the other three are infrastructure.
+`pnpm --filter @reflow/db verify` labels each table `domain` or `supporting`.
 
 ---
 
@@ -207,6 +215,77 @@ resolved_at   timestamptz null
 ```
 
 The track brief asks for an honest exception list. This table is that list, and it gets its own dashboard view. A system that admits what it couldn't resolve is more credible than one claiming complete coverage.
+
+---
+
+### `downtime_windows`
+Added in Run 3. **Not one of the nine.** See ADR-029.
+
+Issuer outages as reported by Razorpay's `payment.downtime.started` / `.updated` /
+`.resolved` events.
+
+```
+id                    uuid pk
+provider_downtime_id  text UNIQUE not null   -- Razorpay's downtime id; the upsert key
+issuer                text null              -- bank/PSP handle, lowercase. null = platform-wide
+method                text null              -- affected rail. null = all rails
+started_at            timestamptz not null
+resolved_at           timestamptz null       -- null = still down
+severity              text null              -- low | medium | high, when supplied
+status                text null              -- Razorpay's raw status string
+scheduled             boolean default false  -- planned maintenance is still an outage
+created_at            timestamptz default now()
+updated_at            timestamptz default now()
+```
+
+Indexes: `(issuer, method)`, `(resolved_at, started_at)`
+
+**Why this exists:** Razorpay tells us the issuer is down directly, which turns
+`issuer_down` from an inference about a `GATEWAY_ERROR` into an observed fact with
+a start and end time. A failure inside an active window for the same issuer and
+rail is diagnosed at confidence 1.0 with `cause_by = 'downtime_signal'`.
+
+**Why `UNIQUE` on `provider_downtime_id`:** the same reasoning as
+`raw_events.provider_event_id`. One outage arrives as up to three deliveries;
+without the constraint it would become three windows and the same failure would
+match three ways.
+
+⚠️ An **unresolved** window matches every later failure on that issuer
+indefinitely. A missed `.resolved` delivery would therefore over-attribute
+`issuer_down`. `findStaleOpenWindows` surfaces any window open beyond 24h. It is
+deliberately not auto-closed — guessing an end time would fabricate data.
+
+---
+
+### `llm_cache`
+Added in Run 3. **Not one of the nine.**
+
+Persisted LLM responses, keyed by `sha256(model + prompt)`.
+
+```
+id                 uuid pk
+cache_key          text UNIQUE not null   -- sha256(model + '\n' + prompt)
+model              text not null
+slot               text not null          -- diagnosis | copy | guard
+response           text not null          -- raw response, before Zod validation
+prompt_tokens      int null
+completion_tokens  int null
+latency_ms         int null
+hit_count          int default 0
+created_at         timestamptz default now()
+last_used_at       timestamptz null
+```
+
+Index: `(model, slot)`
+
+**Why a table and not a file:** the eval must be reproducible, so a re-run has to
+make zero API calls and cannot drift. And Railway containers keep no filesystem
+between deploys, so a disk cache would be cold on every restart and would burn
+Groq quota re-deriving answers it already had. The free tier binds at 8,000 tokens
+per minute; the cache is what makes a 500-case batch feasible at all.
+
+The model is part of the key, so changing `LLM_MODEL_DIAGNOSIS` correctly misses
+rather than silently serving an answer from a different model.
 
 ---
 

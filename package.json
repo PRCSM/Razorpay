@@ -12,6 +12,8 @@
     "webhook:smoke": "pnpm --filter @reflow/worker webhook:smoke",
     "diagnose": "pnpm --filter @reflow/worker diagnose",
     "downtime:smoke": "pnpm --filter @reflow/worker downtime:smoke",
+    "injection:smoke": "pnpm --filter @reflow/worker injection:smoke",
+    "explain": "pnpm --filter @reflow/worker explain",
     "score:diagnosis": "pnpm --filter @reflow/eval score",
     "build": "pnpm --filter @reflow/web build",
     "typecheck": "pnpm -r --workspace-concurrency=1 typecheck",
