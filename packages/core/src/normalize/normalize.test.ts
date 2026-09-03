@@ -336,6 +336,115 @@ describe('normalize — malformed payloads never throw', () => {
   });
 });
 
+/**
+ * These are the shape ingest actually passes.
+ *
+ * `raw_events.payload` stores the COMPLETE envelope, not the inner payload. An
+ * earlier version of the normalizer only understood the inner shape, so every
+ * live event produced a null-filled case while every unit test passed. Caught by
+ * the end-to-end smoke test; these tests exist so it cannot regress.
+ */
+describe('normalize — full webhook envelope (the real ingest shape)', () => {
+  it('normalizes a complete payment.failed envelope', () => {
+    const envelope = {
+      entity: 'event',
+      account_id: 'acc_TEST',
+      event: 'payment.failed',
+      contains: ['payment'],
+      payload: {
+        payment: {
+          entity: {
+            id: 'pay_ENVELOPE',
+            amount: 250_000,
+            currency: 'INR',
+            method: 'card',
+            bank: 'HDFC',
+            customer_id: 'cust_E',
+            error_reason: 'insufficient_funds',
+          },
+        },
+      },
+      created_at: 1_770_000_000,
+    };
+
+    const { draft, warnings } = unwrap(
+      normalizeEvent({ eventType: 'payment.failed', payload: envelope, receivedAt: RECEIVED_AT }),
+    );
+
+    expect(draft.externalRef).toBe('pay_ENVELOPE');
+    expect(draft.amountPaise).toBe(250_000);
+    expect(draft.method).toBe('card');
+    expect(draft.issuer).toBe('hdfc');
+    expect(draft.customerRef).toBe('cust_E');
+    expect(draft.errorReason).toBe('insufficient_funds');
+    expect(warnings).toEqual([]);
+  });
+
+  it('normalizes a complete subscription.halted envelope', () => {
+    const { draft } = unwrap(
+      normalizeEvent({
+        eventType: 'subscription.halted',
+        payload: {
+          entity: 'event',
+          event: 'subscription.halted',
+          payload: {
+            subscription: { entity: { id: 'sub_ENVELOPE', customer_id: 'cust_E2' } },
+            payment: { entity: { amount: 49_900, currency: 'INR', bank: 'AXIS' } },
+          },
+        },
+        receivedAt: RECEIVED_AT,
+      }),
+    );
+    expect(draft.externalRef).toBe('sub_ENVELOPE');
+    expect(draft.amountPaise).toBe(49_900);
+    expect(draft.issuer).toBe('axis');
+  });
+
+  it('normalizes a complete invoice.expired envelope', () => {
+    const { draft } = unwrap(
+      normalizeEvent({
+        eventType: 'invoice.expired',
+        payload: {
+          entity: 'event',
+          event: 'invoice.expired',
+          payload: {
+            invoice: { entity: { id: 'inv_ENVELOPE', amount_due: 4_000_000, currency: 'INR' } },
+          },
+        },
+        receivedAt: RECEIVED_AT,
+      }),
+    );
+    expect(draft.externalRef).toBe('inv_ENVELOPE');
+    expect(draft.amountPaise).toBe(4_000_000);
+  });
+
+  it('normalizes a complete checkout.abandoned envelope', () => {
+    const { draft } = unwrap(
+      normalizeEvent({
+        eventType: 'checkout.abandoned',
+        payload: {
+          event: 'checkout.abandoned',
+          payload: { checkout: { entity: { id: 'order_ENVELOPE', amount: 90_000 } } },
+        },
+        receivedAt: RECEIVED_AT,
+      }),
+    );
+    expect(draft.externalRef).toBe('order_ENVELOPE');
+    expect(draft.amountPaise).toBe(90_000);
+  });
+
+  it('still accepts the bare inner payload shape', () => {
+    const { draft } = unwrap(
+      normalizeEvent({
+        eventType: 'payment.failed',
+        payload: { payment: { entity: { id: 'pay_BARE', amount: 100 } } },
+        receivedAt: RECEIVED_AT,
+      }),
+    );
+    expect(draft.externalRef).toBe('pay_BARE');
+  });
+});
+
 describe('normalize — event routing', () => {
   it('declines events that open no case', () => {
     for (const eventType of [

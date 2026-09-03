@@ -9,6 +9,7 @@
     "dev": "pnpm --filter @reflow/web dev",
     "dev:worker": "pnpm --filter @reflow/worker dev",
     "ingest": "pnpm --filter @reflow/worker ingest:once",
+    "webhook:smoke": "pnpm --filter @reflow/worker webhook:smoke",
     "build": "pnpm --filter @reflow/web build",
     "typecheck": "pnpm -r --workspace-concurrency=1 typecheck",
     "test": "vitest run",
@@ -21,7 +22,8 @@
     "db:seed": "pnpm --filter @reflow/db seed",
     "db:studio": "pnpm --filter @reflow/db studio",
     "eval": "pnpm --filter @reflow/eval start",
-    "eval:seed": "pnpm --filter @reflow/eval seed"
+    "eval:seed": "pnpm --filter @reflow/eval seed",
+    "eval:fingerprint": "pnpm --filter @reflow/eval fingerprint"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

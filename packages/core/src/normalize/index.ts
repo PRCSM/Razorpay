@@ -164,11 +164,28 @@ const NO_ERROR: ErrorFields = {
   errorReason: null,
 };
 
-/** `payload.<key>.entity`, falling back to `payload.<key>` for flattened test payloads. */
-function extractEntity(payload: unknown, key: string): Record<string, unknown> | null {
-  const withEntity = readObject(readPath(payload, [key, 'entity']));
+/**
+ * Find the entity container.
+ *
+ * `raw_events.payload` holds the COMPLETE Razorpay envelope — we never discard
+ * what the provider sent — so the entities live one level down, under
+ * `envelope.payload`. Callers that already hold just the inner payload (tests,
+ * the synthetic generator) pass that directly.
+ *
+ * Both shapes are accepted: if the input has an object-valued `payload` key, that
+ * is the container; otherwise the input itself is.
+ */
+function resolveContainer(input: unknown): unknown {
+  const nested = readObject(readProp(input, 'payload'));
+  return nested ?? input;
+}
+
+/** `<container>.<key>.entity`, falling back to `<container>.<key>` when flattened. */
+function extractEntity(input: unknown, key: string): Record<string, unknown> | null {
+  const container = resolveContainer(input);
+  const withEntity = readObject(readPath(container, [key, 'entity']));
   if (withEntity) return withEntity;
-  return readObject(readProp(payload, key));
+  return readObject(readProp(container, key));
 }
 
 function readCurrency(entity: unknown, warnings: string[]): string {

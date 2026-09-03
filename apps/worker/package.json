@@ -9,6 +9,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "ingest:once": "tsx src/index.ts --once",
+    "webhook:smoke": "tsx src/scripts/webhook-smoke.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
