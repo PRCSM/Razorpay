@@ -14,6 +14,8 @@
     "downtime:smoke": "pnpm --filter @reflow/worker downtime:smoke",
     "injection:smoke": "pnpm --filter @reflow/worker injection:smoke",
     "explain": "pnpm --filter @reflow/worker explain",
+    "plan": "pnpm --filter @reflow/worker plan",
+    "plan:smoke": "pnpm --filter @reflow/worker plan:smoke",
     "score:diagnosis": "pnpm --filter @reflow/eval score",
     "build": "pnpm --filter @reflow/web build",
     "typecheck": "pnpm -r --workspace-concurrency=1 typecheck",

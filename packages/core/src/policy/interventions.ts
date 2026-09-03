@@ -116,7 +116,14 @@ const escalate = (expectedP: number): Intervention => ({
   isContact: false,
 });
 
-/** Terminal and no-action causes. `stop` closes the case and costs nothing. */
+/**
+ * Terminal and non-recoverable causes.
+ *
+ * `maxAttempts` is 1, not 0. `stop` is itself a decision that must be RECORDED —
+ * TASK 1 requires every cause to map to something, and a terminal case needs a
+ * persisted plan saying "we deliberately did nothing, here is why" rather than no
+ * row at all. A second call returns null, because one stop is enough.
+ */
 const STOP: InterventionPlan = {
   ladder: [
     {
@@ -127,7 +134,7 @@ const STOP: InterventionPlan = {
       isContact: false,
     },
   ],
-  maxAttempts: 0,
+  maxAttempts: 1,
   rationale: 'Terminal or non-recoverable: the agent stops. No retry, no message.',
 };
 

@@ -146,7 +146,7 @@ export function gateCoolingWindow(
   plan: GatedPlan,
   state: GuardrailState,
   policy: PolicyConfig,
-  now: Date,
+  _now: Date,
 ): GateVerdict & { readonly rescheduleTo?: Date } {
   const gate: GateName = 'cooling_window';
   const config = policy.gates.cooling_window;
