@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
+    "ingest:once": "tsx src/index.ts --once",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
